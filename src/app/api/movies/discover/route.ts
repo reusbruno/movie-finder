@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   discoverMovies,
   MOVIE_SORT_OPTIONS,
+  TMDB_MAX_DISCOVER_PAGE,
   TMDBError,
   type MovieSortBy,
 } from "@/lib/tmdb";
@@ -35,9 +36,11 @@ export async function GET(request: NextRequest) {
   }
 
   const page = pageParam ? Number(pageParam) : 1;
-  if (!Number.isInteger(page) || page < 1) {
+  if (!Number.isInteger(page) || page < 1 || page > TMDB_MAX_DISCOVER_PAGE) {
     return NextResponse.json(
-      { error: "Query parameter 'page' must be a positive integer" },
+      {
+        error: `Query parameter 'page' must be a positive integer up to ${TMDB_MAX_DISCOVER_PAGE}`,
+      },
       { status: 400 }
     );
   }

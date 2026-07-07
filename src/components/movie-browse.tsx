@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { MovieSortBy, TMDBGenre, TMDBMovie } from "@/lib/tmdb";
+import {
+  TMDB_MAX_DISCOVER_PAGE,
+  type MovieSortBy,
+  type TMDBGenre,
+  type TMDBMovie,
+} from "@/lib/tmdb";
 import { MovieGrid } from "@/components/movie-grid";
 
 const SORT_OPTIONS: { value: MovieSortBy; label: string }[] = [
@@ -105,7 +110,8 @@ export function MovieBrowse({ genres }: { genres: TMDBGenre[] }) {
     }
   }
 
-  const canLoadMore = page < totalPages;
+  const canLoadMore =
+    page < totalPages && page < TMDB_MAX_DISCOVER_PAGE;
 
   return (
     <div className="flex flex-1 flex-col gap-6 px-6 py-8">
