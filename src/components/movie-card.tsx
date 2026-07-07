@@ -1,9 +1,10 @@
 import Link from "next/link";
-import type { TMDBMovie } from "@/lib/tmdb";
+import type { MovieWithRatings } from "@/lib/ratings";
+import { ScoreBadges } from "@/components/score-badges";
 
 const POSTER_BASE_URL = "https://image.tmdb.org/t/p/w342";
 
-export function MovieCard({ movie }: { movie: TMDBMovie }) {
+export function MovieCard({ movie }: { movie: MovieWithRatings }) {
   const year = movie.release_date ? movie.release_date.slice(0, 4) : null;
 
   return (
@@ -27,8 +28,13 @@ export function MovieCard({ movie }: { movie: TMDBMovie }) {
         <h3 className="line-clamp-2 text-sm font-medium leading-tight">
           {movie.title}
         </h3>
+        <p className="text-xs text-foreground/60">{year ?? "Unknown year"}</p>
         <p className="text-xs text-foreground/60">
-          {year ?? "Unknown year"} · ★ {movie.vote_average.toFixed(1)}
+          <ScoreBadges
+            tmdbScore={movie.vote_average}
+            imdbRating={movie.ratings.imdbRating}
+            rtScore={movie.ratings.rottenTomatoesScore}
+          />
         </p>
       </div>
     </Link>

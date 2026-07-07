@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMovieRecommendations, TMDBError } from "@/lib/tmdb";
+import { enrichMoviesWithRatings } from "@/lib/ratings";
 
 export async function GET(
   request: NextRequest,
@@ -24,7 +25,8 @@ export async function GET(
 
   try {
     const results = await getMovieRecommendations(movieId, page);
-    return NextResponse.json(results);
+    const enriched = await enrichMoviesWithRatings(results.results);
+    return NextResponse.json({ ...results, results: enriched });
   } catch (error) {
     if (error instanceof TMDBError) {
       return NextResponse.json({ error: error.message }, { status: error.status });

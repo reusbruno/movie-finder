@@ -5,8 +5,8 @@ import {
   TMDB_MAX_DISCOVER_PAGE,
   type MovieSortBy,
   type TMDBGenre,
-  type TMDBMovie,
 } from "@/lib/tmdb";
+import type { MovieWithRatings } from "@/lib/ratings";
 import { MovieGrid } from "@/components/movie-grid";
 
 const SORT_OPTIONS: { value: MovieSortBy; label: string }[] = [
@@ -16,10 +16,15 @@ const SORT_OPTIONS: { value: MovieSortBy; label: string }[] = [
   { value: "title.asc", label: "Title (A-Z)" },
 ];
 
+const MIN_IMDB_OPTIONS = ["", "6", "7", "8", "9"] as const;
+const MIN_RT_OPTIONS = ["", "25", "50", "75", "90"] as const;
+
 export function MovieBrowse({ genres }: { genres: TMDBGenre[] }) {
   const [selectedGenres, setSelectedGenres] = useState<number[]>([]);
   const [sortBy, setSortBy] = useState<MovieSortBy>(SORT_OPTIONS[0].value);
-  const [movies, setMovies] = useState<TMDBMovie[]>([]);
+  const [minImdb, setMinImdb] = useState("");
+  const [minRt, setMinRt] = useState("");
+  const [movies, setMovies] = useState<MovieWithRatings[]>([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -33,6 +38,20 @@ export function MovieBrowse({ genres }: { genres: TMDBGenre[] }) {
     );
   }
 
+  function buildParams(targetPage: number) {
+    const params = new URLSearchParams({ sort_by: sortBy, page: String(targetPage) });
+    if (selectedGenres.length > 0) {
+      params.set("genres", selectedGenres.join(","));
+    }
+    if (minImdb) {
+      params.set("min_imdb", minImdb);
+    }
+    if (minRt) {
+      params.set("min_rt", minRt);
+    }
+    return params;
+  }
+
   useEffect(() => {
     const timeout = setTimeout(async () => {
       abortRef.current?.abort();
@@ -43,10 +62,7 @@ export function MovieBrowse({ genres }: { genres: TMDBGenre[] }) {
       setError(null);
 
       try {
-        const params = new URLSearchParams({ sort_by: sortBy, page: "1" });
-        if (selectedGenres.length > 0) {
-          params.set("genres", selectedGenres.join(","));
-        }
+        const params = buildParams(1);
 
         const response = await fetch(`/api/movies/discover?${params.toString()}`, {
           signal: controller.signal,
@@ -69,7 +85,8 @@ export function MovieBrowse({ genres }: { genres: TMDBGenre[] }) {
     }, 0);
 
     return () => clearTimeout(timeout);
-  }, [selectedGenres, sortBy]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedGenres, sortBy, minImdb, minRt]);
 
   async function loadMore() {
     abortRef.current?.abort();
@@ -82,13 +99,7 @@ export function MovieBrowse({ genres }: { genres: TMDBGenre[] }) {
     setError(null);
 
     try {
-      const params = new URLSearchParams({
-        sort_by: sortBy,
-        page: String(nextPage),
-      });
-      if (selectedGenres.length > 0) {
-        params.set("genres", selectedGenres.join(","));
-      }
+      const params = buildParams(nextPage);
 
       const response = await fetch(`/api/movies/discover?${params.toString()}`, {
         signal: controller.signal,
@@ -110,8 +121,7 @@ export function MovieBrowse({ genres }: { genres: TMDBGenre[] }) {
     }
   }
 
-  const canLoadMore =
-    page < totalPages && page < TMDB_MAX_DISCOVER_PAGE;
+  const canLoadMore = page < totalPages && page < TMDB_MAX_DISCOVER_PAGE;
 
   return (
     <div className="flex flex-1 flex-col gap-6 px-6 py-8">
@@ -131,20 +141,50 @@ export function MovieBrowse({ genres }: { genres: TMDBGenre[] }) {
             </label>
           ))}
         </fieldset>
-        <label className="flex items-center gap-2 text-sm">
-          Sort by
-          <select
-            value={sortBy}
-            onChange={(event) => setSortBy(event.target.value as MovieSortBy)}
-            className="rounded-md border border-black/[.08] bg-transparent px-2 py-1 dark:border-white/[.145]"
-          >
-            {SORT_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="flex flex-wrap items-center gap-4">
+          <label className="flex items-center gap-2 text-sm">
+            Sort by
+            <select
+              value={sortBy}
+              onChange={(event) => setSortBy(event.target.value as MovieSortBy)}
+              className="rounded-md border border-black/[.08] bg-transparent px-2 py-1 dark:border-white/[.145]"
+            >
+              {SORT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            Min IMDb
+            <select
+              value={minImdb}
+              onChange={(event) => setMinImdb(event.target.value)}
+              className="rounded-md border border-black/[.08] bg-transparent px-2 py-1 dark:border-white/[.145]"
+            >
+              {MIN_IMDB_OPTIONS.map((value) => (
+                <option key={value} value={value}>
+                  {value ? `${value}+` : "Any"}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            Min RT
+            <select
+              value={minRt}
+              onChange={(event) => setMinRt(event.target.value)}
+              className="rounded-md border border-black/[.08] bg-transparent px-2 py-1 dark:border-white/[.145]"
+            >
+              {MIN_RT_OPTIONS.map((value) => (
+                <option key={value} value={value}>
+                  {value ? `${value}%+` : "Any"}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
       {loading ? (
         <p className="text-sm text-foreground/60">Loading…</p>

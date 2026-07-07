@@ -46,6 +46,7 @@ export interface TMDBMovieDetails extends Omit<TMDBMovie, "genre_ids"> {
   homepage: string | null;
   budget: number;
   revenue: number;
+  imdb_id: string | null;
 }
 
 function getApiToken(): string {
@@ -112,6 +113,14 @@ export function getMovieRecommendations(
   return tmdbFetch<TMDBSearchResponse>(`/movie/${id}/recommendations`, {
     page: String(page),
   });
+}
+
+export interface TMDBExternalIds {
+  imdb_id: string | null;
+}
+
+export function getMovieExternalIds(id: number): Promise<TMDBExternalIds> {
+  return tmdbFetch<TMDBExternalIds>(`/movie/${id}/external_ids`);
 }
 
 export interface TMDBGenreListResponse {

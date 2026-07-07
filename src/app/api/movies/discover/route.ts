@@ -6,6 +6,29 @@ import {
   TMDBError,
   type MovieSortBy,
 } from "@/lib/tmdb";
+import { enrichMoviesWithRatings, type MovieWithRatings } from "@/lib/ratings";
+
+function passesRatingFilters(
+  movie: MovieWithRatings,
+  minImdb: number | null,
+  minRt: number | null
+): boolean {
+  if (
+    minImdb !== null &&
+    movie.ratings.imdbRating !== null &&
+    movie.ratings.imdbRating < minImdb
+  ) {
+    return false;
+  }
+  if (
+    minRt !== null &&
+    movie.ratings.rottenTomatoesScore !== null &&
+    movie.ratings.rottenTomatoesScore < minRt
+  ) {
+    return false;
+  }
+  return true;
+}
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -45,9 +68,37 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  const minImdbParam = searchParams.get("min_imdb");
+  let minImdb: number | null = null;
+  if (minImdbParam) {
+    minImdb = Number(minImdbParam);
+    if (!Number.isFinite(minImdb) || minImdb < 0 || minImdb > 10) {
+      return NextResponse.json(
+        { error: "Query parameter 'min_imdb' must be a number between 0 and 10" },
+        { status: 400 }
+      );
+    }
+  }
+
+  const minRtParam = searchParams.get("min_rt");
+  let minRt: number | null = null;
+  if (minRtParam) {
+    minRt = Number(minRtParam);
+    if (!Number.isFinite(minRt) || minRt < 0 || minRt > 100) {
+      return NextResponse.json(
+        { error: "Query parameter 'min_rt' must be a number between 0 and 100" },
+        { status: 400 }
+      );
+    }
+  }
+
   try {
     const results = await discoverMovies({ genreIds, sortBy, page });
-    return NextResponse.json(results);
+    const enriched = await enrichMoviesWithRatings(results.results);
+    const filtered = enriched.filter((movie) =>
+      passesRatingFilters(movie, minImdb, minRt)
+    );
+    return NextResponse.json({ ...results, results: filtered });
   } catch (error) {
     if (error instanceof TMDBError) {
       return NextResponse.json({ error: error.message }, { status: error.status });

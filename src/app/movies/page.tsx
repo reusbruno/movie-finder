@@ -1,4 +1,5 @@
 import { getMovieGenres, getPopularMovies } from "@/lib/tmdb";
+import { enrichMoviesWithRatings } from "@/lib/ratings";
 import { MoviesView } from "@/components/movies-view";
 
 export default async function MoviesPage() {
@@ -6,8 +7,7 @@ export default async function MoviesPage() {
     getPopularMovies(),
     getMovieGenres(),
   ]);
+  const initialMovies = await enrichMoviesWithRatings(popular.results);
 
-  return (
-    <MoviesView initialMovies={popular.results} genres={genres.genres} />
-  );
+  return <MoviesView initialMovies={initialMovies} genres={genres.genres} />;
 }

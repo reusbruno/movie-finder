@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { TMDBMovie } from "@/lib/tmdb";
+import type { MovieWithRatings } from "@/lib/ratings";
 import { MovieGrid } from "@/components/movie-grid";
 
 const DEBOUNCE_MS = 400;
@@ -9,10 +9,12 @@ const DEBOUNCE_MS = 400;
 export function MovieSearch({
   initialMovies,
 }: {
-  initialMovies: TMDBMovie[];
+  initialMovies: MovieWithRatings[];
 }) {
   const [query, setQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<TMDBMovie[] | null>(null);
+  const [searchResults, setSearchResults] = useState<MovieWithRatings[] | null>(
+    null
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);

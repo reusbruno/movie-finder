@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import type { TMDBGenre, TMDBMovie } from "@/lib/tmdb";
+import type { TMDBGenre } from "@/lib/tmdb";
+import type { MovieWithRatings } from "@/lib/ratings";
 import { MovieSearch } from "@/components/movie-search";
 import { MovieBrowse } from "@/components/movie-browse";
 
@@ -16,7 +17,7 @@ export function MoviesView({
   initialMovies,
   genres,
 }: {
-  initialMovies: TMDBMovie[];
+  initialMovies: MovieWithRatings[];
   genres: TMDBGenre[];
 }) {
   const [tab, setTab] = useState<Tab>("search");

@@ -5,7 +5,10 @@ import {
   getMovieRecommendations,
   TMDBError,
 } from "@/lib/tmdb";
+import { getMovieRatingsByImdbId } from "@/lib/omdb";
+import { enrichMoviesWithRatings } from "@/lib/ratings";
 import { MovieGrid } from "@/components/movie-grid";
+import { ScoreBadges } from "@/components/score-badges";
 
 const POSTER_BASE_URL = "https://image.tmdb.org/t/p/w342";
 
@@ -31,7 +34,15 @@ export default async function MovieDetailPage({
     throw error;
   }
 
-  const recommendations = await getMovieRecommendations(movieId);
+  const [recommendations, ratings] = await Promise.all([
+    getMovieRecommendations(movieId),
+    details.imdb_id
+      ? getMovieRatingsByImdbId(details.imdb_id)
+      : Promise.resolve({ imdbRating: null, rottenTomatoesScore: null }),
+  ]);
+  const recommendationsWithRatings = await enrichMoviesWithRatings(
+    recommendations.results
+  );
   const year = details.release_date ? details.release_date.slice(0, 4) : null;
 
   return (
@@ -70,7 +81,11 @@ export default async function MovieDetailPage({
             <p className="italic text-foreground/60">{details.tagline}</p>
           )}
           <p className="text-sm text-foreground/60">
-            ★ {details.vote_average.toFixed(1)}
+            <ScoreBadges
+              tmdbScore={details.vote_average}
+              imdbRating={ratings.imdbRating}
+              rtScore={ratings.rottenTomatoesScore}
+            />
             {details.runtime ? ` · ${details.runtime} min` : ""}
             {details.genres.length > 0
               ? ` · ${details.genres.map((genre) => genre.name).join(", ")}`
@@ -86,7 +101,7 @@ export default async function MovieDetailPage({
         <h2 className="text-lg font-semibold tracking-tight">
           More like this
         </h2>
-        <MovieGrid movies={recommendations.results} />
+        <MovieGrid movies={recommendationsWithRatings} />
       </div>
     </div>
   );
