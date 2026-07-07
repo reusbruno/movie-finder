@@ -113,3 +113,44 @@ export function getMovieRecommendations(
     page: String(page),
   });
 }
+
+export interface TMDBGenreListResponse {
+  genres: TMDBGenre[];
+}
+
+export function getMovieGenres(): Promise<TMDBGenreListResponse> {
+  return tmdbFetch<TMDBGenreListResponse>("/genre/movie/list");
+}
+
+export const MOVIE_SORT_OPTIONS = [
+  "popularity.desc",
+  "vote_average.desc",
+  "primary_release_date.desc",
+  "title.asc",
+] as const;
+
+export type MovieSortBy = (typeof MOVIE_SORT_OPTIONS)[number];
+
+const DEFAULT_MIN_VOTE_COUNT = 50;
+const TOP_RATED_MIN_VOTE_COUNT = 200;
+
+export function discoverMovies(options: {
+  genreIds?: number[];
+  sortBy?: MovieSortBy;
+  page?: number;
+}): Promise<TMDBSearchResponse> {
+  const { genreIds = [], sortBy = "popularity.desc", page = 1 } = options;
+
+  const params: Record<string, string> = {
+    sort_by: sortBy,
+    page: String(page),
+    "vote_count.gte": String(
+      sortBy === "vote_average.desc" ? TOP_RATED_MIN_VOTE_COUNT : DEFAULT_MIN_VOTE_COUNT
+    ),
+  };
+  if (genreIds.length > 0) {
+    params.with_genres = genreIds.join("|");
+  }
+
+  return tmdbFetch<TMDBSearchResponse>("/discover/movie", params);
+}

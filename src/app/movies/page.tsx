@@ -1,8 +1,13 @@
-import { getPopularMovies } from "@/lib/tmdb";
-import { MovieSearch } from "@/components/movie-search";
+import { getMovieGenres, getPopularMovies } from "@/lib/tmdb";
+import { MoviesView } from "@/components/movies-view";
 
 export default async function MoviesPage() {
-  const popular = await getPopularMovies();
+  const [popular, genres] = await Promise.all([
+    getPopularMovies(),
+    getMovieGenres(),
+  ]);
 
-  return <MovieSearch initialMovies={popular.results} />;
+  return (
+    <MoviesView initialMovies={popular.results} genres={genres.genres} />
+  );
 }
