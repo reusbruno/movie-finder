@@ -98,3 +98,18 @@ export function searchMovies(
 export function getMovieDetails(id: number): Promise<TMDBMovieDetails> {
   return tmdbFetch<TMDBMovieDetails>(`/movie/${id}`);
 }
+
+export function getPopularMovies(page = 1): Promise<TMDBSearchResponse> {
+  return tmdbFetch<TMDBSearchResponse>("/movie/popular", {
+    page: String(page),
+  });
+}
+
+export function getMovieRecommendations(
+  id: number,
+  page = 1
+): Promise<TMDBSearchResponse> {
+  return tmdbFetch<TMDBSearchResponse>(`/movie/${id}/recommendations`, {
+    page: String(page),
+  });
+}
