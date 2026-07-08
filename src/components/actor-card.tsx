@@ -8,7 +8,8 @@ const PROFILE_SIZES =
 
 export function ActorCard({ person }: { person: TMDBPerson }) {
   const knownFor = person.known_for
-    .filter((item) => item.media_type === "movie" && item.title)
+    .map((item) => item.title ?? item.name)
+    .filter((title): title is string => Boolean(title))
     .slice(0, 2);
 
   return (
@@ -38,7 +39,7 @@ export function ActorCard({ person }: { person: TMDBPerson }) {
           <div className="grid grid-rows-[0fr] opacity-0 transition-all duration-200 ease-out group-hover:grid-rows-[1fr] group-hover:opacity-100 group-focus-visible:grid-rows-[1fr] group-focus-visible:opacity-100">
             <div className="overflow-hidden">
               <p className="line-clamp-2 pt-1 text-xs text-white/70">
-                {knownFor.map((item) => item.title).join(", ")}
+                {knownFor.join(", ")}
               </p>
             </div>
           </div>
