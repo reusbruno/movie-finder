@@ -1,3 +1,5 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import {
   getMovieExternalIds,
   getTVExternalIds,
@@ -13,12 +15,58 @@ const EMPTY_RATINGS: MovieRatings = {
 
 type MediaType = "movie" | "tv";
 
-// In-process memoization only: no persistence, no TTL, resets on every
-// server restart. Just avoids re-fetching OMDb for the same title
-// repeatedly within one dev/server run (e.g. reloading the same
-// Popular grid). Not the caching layer the build plan defers. Keyed by
-// media type + id since movie and TV ids are separate TMDB id spaces.
+// Persisted to disk (in addition to the in-process Map below) so ratings
+// survive dev-server restarts. Every restart previously wiped the cache and
+// re-triggered a full OMDb/MDBList/TMDB-external-ids fan-out for every movie
+// touched again - the actual driver of OMDb quota burn during testing, not
+// just a one-time cost. This is a flat, regenerable JSON snapshot - not the
+// caching layer the build plan defers - so it's gitignored, not committed.
+const CACHE_DIR = path.join(process.cwd(), ".cache");
+const CACHE_FILE = path.join(CACHE_DIR, "ratings-cache.json");
+
+function loadPersistedRatings(): Record<string, MovieRatings> {
+  if (!existsSync(CACHE_FILE)) return {};
+  try {
+    return JSON.parse(readFileSync(CACHE_FILE, "utf-8")) as Record<
+      string,
+      MovieRatings
+    >;
+  } catch (error) {
+    console.error("Failed to read persisted ratings cache, starting empty:", error);
+    return {};
+  }
+}
+
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Debounced: enrichWithRatings resolves up to ~20 ratings in a single burst
+// (Promise.allSettled over a recommendations grid), which would otherwise
+// mean up to 20 synchronous disk writes per page load.
+function schedulePersist() {
+  if (persistTimer) return;
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    try {
+      mkdirSync(CACHE_DIR, { recursive: true });
+      writeFileSync(CACHE_FILE, JSON.stringify(resolvedRatings));
+    } catch (error) {
+      console.error("Failed to persist ratings cache:", error);
+    }
+  }, 500);
+}
+
+// In-process memoization, as before - avoids re-fetching OMDb for the same
+// title repeatedly within one dev/server run. Keyed by media type + id since
+// movie and TV ids are separate TMDB id spaces.
 const ratingsCache = new Map<string, Promise<MovieRatings>>();
+
+// Plain-object mirror of resolved (non-error) entries in ratingsCache - this
+// is what actually gets written to disk, since Promises themselves aren't
+// serializable.
+const resolvedRatings: Record<string, MovieRatings> = loadPersistedRatings();
+for (const [key, ratings] of Object.entries(resolvedRatings)) {
+  ratingsCache.set(key, Promise.resolve(ratings));
+}
 
 async function fetchRatings(
   mediaType: MediaType,
@@ -69,11 +117,17 @@ function getRatings(mediaType: MediaType, tmdbId: number): Promise<MovieRatings>
     // still cleared on failure so a transient error doesn't get stuck
     // forever; logged so a real, ongoing problem (e.g. a spent OMDb quota)
     // is actually visible instead of silently invisible everywhere.
-    cached = fetchRatings(mediaType, tmdbId).catch((error: unknown) => {
-      ratingsCache.delete(key);
-      console.error(`Ratings fetch failed for ${key}, degrading to no ratings:`, error);
-      return EMPTY_RATINGS;
-    });
+    cached = fetchRatings(mediaType, tmdbId)
+      .then((ratings) => {
+        resolvedRatings[key] = ratings;
+        schedulePersist();
+        return ratings;
+      })
+      .catch((error: unknown) => {
+        ratingsCache.delete(key);
+        console.error(`Ratings fetch failed for ${key}, degrading to no ratings:`, error);
+        return EMPTY_RATINGS;
+      });
     ratingsCache.set(key, cached);
   }
   return cached;

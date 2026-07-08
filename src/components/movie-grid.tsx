@@ -22,7 +22,7 @@ export function MovieGrid({
           key={movie.id}
           className={gridItemVisibilityClass(index, movies.length)}
         >
-          <MovieCard movie={movie} basePath={basePath} />
+          <MovieCard movie={movie} basePath={basePath} priority={index === 0} />
         </div>
       ))}
     </div>

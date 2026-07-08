@@ -1,15 +1,23 @@
+import Image from "next/image";
 import Link from "next/link";
 import type { MovieWithRatings } from "@/lib/ratings";
 import { ScoreBadges } from "@/components/score-badges";
 
-const POSTER_BASE_URL = "https://image.tmdb.org/t/p/w342";
+const POSTER_BASE_URL = "https://image.tmdb.org/t/p/w500";
+// Matches the grid's column breakpoints (grid-cols-3 sm:4 md:6 xl:8) so the
+// browser requests a poster sized for how large it's actually rendered,
+// instead of always fetching the full w500 source.
+const POSTER_SIZES =
+  "(min-width: 1280px) 12vw, (min-width: 768px) 16vw, (min-width: 640px) 25vw, 33vw";
 
 export function MovieCard({
   movie,
   basePath = "movies",
+  priority = false,
 }: {
   movie: MovieWithRatings;
   basePath?: "movies" | "series";
+  priority?: boolean;
 }) {
   const year = movie.release_date ? movie.release_date.slice(0, 4) : null;
 
@@ -19,12 +27,13 @@ export function MovieCard({
       className="group relative block aspect-[2/3] overflow-hidden rounded-lg bg-black/[.04] shadow-none transition-all duration-200 ease-out hover:z-10 hover:scale-[1.04] hover:shadow-lg hover:shadow-black/40 focus-visible:z-10 focus-visible:scale-[1.04] focus-visible:ring-2 focus-visible:ring-accent dark:bg-white/[.06]"
     >
       {movie.poster_path ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
+        <Image
           src={`${POSTER_BASE_URL}${movie.poster_path}`}
           alt={`${movie.title} poster`}
-          loading="lazy"
-          className="h-full w-full object-cover"
+          fill
+          sizes={POSTER_SIZES}
+          priority={priority}
+          className="object-cover"
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center p-4 text-center text-sm text-foreground/60">

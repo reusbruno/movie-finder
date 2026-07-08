@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -13,9 +14,15 @@ import { ScoreBadges } from "@/components/score-badges";
 import { CastList } from "@/components/cast-list";
 
 const MAX_CAST_MEMBERS = 12;
+// Caps how many "More like this" recommendations get rating-enriched.
+// TMDB returns up to 20 per page, and each one costs a TMDB external_ids call
+// plus an OMDb (and possibly MDBList fallback) call - uncapped, a single page
+// load could trigger ~20 OMDb calls. 8 matches the widest grid breakpoint
+// (grid-cols-8 in movie-grid.tsx), so it's still a full row, not a partial one.
+const MAX_ENRICHED_RECOMMENDATIONS = 8;
 const NO_RATINGS: MovieRatings = { imdbRating: null, rottenTomatoesScore: null };
 
-const POSTER_BASE_URL = "https://image.tmdb.org/t/p/w342";
+const POSTER_BASE_URL = "https://image.tmdb.org/t/p/w500";
 
 // Ratings are an enrichment, never a reason this page should fail to
 // render - any failure (rate limit, network error, etc.) degrades to "no
@@ -45,6 +52,18 @@ export default async function MovieDetailPage({
     notFound();
   }
 
+  // Started immediately, alongside getMovieDetails below - neither depends
+  // on the details response, so there's no reason to wait for it first.
+  const recommendationsPromise = getMovieRecommendations(movieId);
+  const creditsPromise = getMovieCredits(movieId);
+  // A bad id 404s on every endpoint, not just getMovieDetails - if these
+  // reject while getMovieDetails is still in flight below, nothing has
+  // observed them yet, which Node treats as an unhandled rejection. The
+  // real error is still observed via Promise.all further down; this just
+  // pre-empts the false "unhandled" report if the details 404 wins first.
+  recommendationsPromise.catch(() => {});
+  creditsPromise.catch(() => {});
+
   let details;
   try {
     details = await getMovieDetails(movieId);
@@ -56,12 +75,12 @@ export default async function MovieDetailPage({
   }
 
   const [recommendations, ratings, credits] = await Promise.all([
-    getMovieRecommendations(movieId),
+    recommendationsPromise,
     fetchOwnRatings(details.imdb_id),
-    getMovieCredits(movieId),
+    creditsPromise,
   ]);
   const recommendationsWithRatings = await enrichMoviesWithRatings(
-    recommendations.results
+    recommendations.results.slice(0, MAX_ENRICHED_RECOMMENDATIONS)
   );
   const topCast = [...credits.cast]
     .sort((a, b) => a.order - b.order)
@@ -77,16 +96,18 @@ export default async function MovieDetailPage({
         ← Back to Movies
       </Link>
       <div className="flex flex-col gap-6 sm:flex-row">
-        <div className="w-full max-w-[220px] shrink-0 overflow-hidden rounded-lg bg-black/[.04] dark:bg-white/[.06]">
+        <div className="relative aspect-[2/3] w-full max-w-[220px] shrink-0 overflow-hidden rounded-lg bg-black/[.04] dark:bg-white/[.06]">
           {details.poster_path ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+            <Image
               src={`${POSTER_BASE_URL}${details.poster_path}`}
               alt={`${details.title} poster`}
-              className="h-full w-full object-cover"
+              fill
+              sizes="(min-width: 640px) 220px, 100vw"
+              priority
+              className="object-cover"
             />
           ) : (
-            <div className="flex aspect-[2/3] items-center justify-center p-4 text-center text-sm text-foreground/60">
+            <div className="flex h-full items-center justify-center p-4 text-center text-sm text-foreground/60">
               No poster available
             </div>
           )}

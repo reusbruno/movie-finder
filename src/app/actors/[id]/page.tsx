@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -33,6 +34,20 @@ export default async function ActorDetailPage({
     notFound();
   }
 
+  // Started immediately, alongside getPersonDetails below - none of these
+  // four depend on the details response.
+  const movieCreditsPromise = getPersonMovieCredits(personId);
+  const tvCreditsPromise = getPersonTVCredits(personId);
+  const movieGenresPromise = getMovieGenres();
+  const tvGenresPromise = getTVGenres();
+  // See src/app/movies/[id]/page.tsx - pre-empt a false "unhandled
+  // rejection" if any of these settle before getPersonDetails below; the
+  // real error is still observed via Promise.all.
+  movieCreditsPromise.catch(() => {});
+  tvCreditsPromise.catch(() => {});
+  movieGenresPromise.catch(() => {});
+  tvGenresPromise.catch(() => {});
+
   let details;
   try {
     details = await getPersonDetails(personId);
@@ -44,10 +59,10 @@ export default async function ActorDetailPage({
   }
 
   const [movieCredits, tvCredits, movieGenres, tvGenres] = await Promise.all([
-    getPersonMovieCredits(personId),
-    getPersonTVCredits(personId),
-    getMovieGenres(),
-    getTVGenres(),
+    movieCreditsPromise,
+    tvCreditsPromise,
+    movieGenresPromise,
+    tvGenresPromise,
   ]);
 
   const combinedCredits = [...movieCredits.cast, ...tvCredits.cast];
@@ -62,16 +77,18 @@ export default async function ActorDetailPage({
         ← Back to Movies
       </Link>
       <div className="flex flex-col gap-6 sm:flex-row">
-        <div className="w-full max-w-[220px] shrink-0 overflow-hidden rounded-lg bg-black/[.04] dark:bg-white/[.06]">
+        <div className="relative aspect-[2/3] w-full max-w-[220px] shrink-0 overflow-hidden rounded-lg bg-black/[.04] dark:bg-white/[.06]">
           {details.profile_path ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+            <Image
               src={`${PROFILE_BASE_URL}${details.profile_path}`}
               alt={details.name}
-              className="h-full w-full object-cover"
+              fill
+              sizes="(min-width: 640px) 220px, 100vw"
+              priority
+              className="object-cover"
             />
           ) : (
-            <div className="flex aspect-[2/3] items-center justify-center p-4 text-center text-sm text-foreground/60">
+            <div className="flex h-full items-center justify-center p-4 text-center text-sm text-foreground/60">
               No photo available
             </div>
           )}

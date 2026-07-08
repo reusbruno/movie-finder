@@ -57,9 +57,21 @@ function getApiToken(): string {
   return token;
 }
 
+const REQUEST_TIMEOUT_MS = 10_000;
+
+// Cache windows, conservative on purpose - staleness this short is invisible
+// to users but still cuts most of the redundant upstream traffic. `false`
+// means genuinely request-specific (search results) and shouldn't be cached.
+export const REVALIDATE = {
+  reference: 86_400, // genre lists - practically static
+  listing: 300, // popular/discover/credits/details/external_ids
+  search: false as const,
+} as const;
+
 async function tmdbFetch<T>(
   path: string,
-  searchParams?: Record<string, string>
+  searchParams?: Record<string, string>,
+  revalidate: number | false = REVALIDATE.listing
 ): Promise<T> {
   const url = new URL(`${TMDB_API_BASE_URL}${path}`);
   if (searchParams) {
@@ -73,6 +85,8 @@ async function tmdbFetch<T>(
       Authorization: `Bearer ${getApiToken()}`,
       Accept: "application/json",
     },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    next: revalidate === false ? { revalidate: 0 } : { revalidate },
   });
 
   if (!response.ok) {
@@ -89,11 +103,11 @@ export function searchMovies(
   query: string,
   page = 1
 ): Promise<TMDBSearchResponse> {
-  return tmdbFetch<TMDBSearchResponse>("/search/movie", {
-    query,
-    page: String(page),
-    include_adult: "false",
-  });
+  return tmdbFetch<TMDBSearchResponse>(
+    "/search/movie",
+    { query, page: String(page), include_adult: "false" },
+    REVALIDATE.search
+  );
 }
 
 export function getMovieDetails(id: number): Promise<TMDBMovieDetails> {
@@ -128,7 +142,11 @@ export interface TMDBGenreListResponse {
 }
 
 export function getMovieGenres(): Promise<TMDBGenreListResponse> {
-  return tmdbFetch<TMDBGenreListResponse>("/genre/movie/list");
+  return tmdbFetch<TMDBGenreListResponse>(
+    "/genre/movie/list",
+    undefined,
+    REVALIDATE.reference
+  );
 }
 
 export const MOVIE_SORT_OPTIONS = [
@@ -199,11 +217,11 @@ export function searchPeople(
   query: string,
   page = 1
 ): Promise<TMDBPersonSearchResponse> {
-  return tmdbFetch<TMDBPersonSearchResponse>("/search/person", {
-    query,
-    page: String(page),
-    include_adult: "false",
-  });
+  return tmdbFetch<TMDBPersonSearchResponse>(
+    "/search/person",
+    { query, page: String(page), include_adult: "false" },
+    REVALIDATE.search
+  );
 }
 
 export function getPopularPeople(
@@ -329,11 +347,11 @@ function mapTVSearchResponse(data: RawTMDBSearchResponse): TMDBSearchResponse {
 }
 
 export function searchTV(query: string, page = 1): Promise<TMDBSearchResponse> {
-  return tmdbFetch<RawTMDBSearchResponse>("/search/tv", {
-    query,
-    page: String(page),
-    include_adult: "false",
-  }).then(mapTVSearchResponse);
+  return tmdbFetch<RawTMDBSearchResponse>(
+    "/search/tv",
+    { query, page: String(page), include_adult: "false" },
+    REVALIDATE.search
+  ).then(mapTVSearchResponse);
 }
 
 export function getPopularTV(page = 1): Promise<TMDBSearchResponse> {
@@ -343,7 +361,11 @@ export function getPopularTV(page = 1): Promise<TMDBSearchResponse> {
 }
 
 export function getTVGenres(): Promise<TMDBGenreListResponse> {
-  return tmdbFetch<TMDBGenreListResponse>("/genre/tv/list");
+  return tmdbFetch<TMDBGenreListResponse>(
+    "/genre/tv/list",
+    undefined,
+    REVALIDATE.reference
+  );
 }
 
 export const TV_SORT_OPTIONS = [

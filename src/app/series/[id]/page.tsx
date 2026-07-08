@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -12,8 +13,11 @@ import { ScoreBadges } from "@/components/score-badges";
 import { CastList } from "@/components/cast-list";
 
 const MAX_CAST_MEMBERS = 12;
+// See src/app/movies/[id]/page.tsx - same rationale: caps OMDb/MDBList/TMDB
+// external_ids fan-out for the "More like this" grid to one full grid row.
+const MAX_ENRICHED_RECOMMENDATIONS = 8;
 
-const POSTER_BASE_URL = "https://image.tmdb.org/t/p/w342";
+const POSTER_BASE_URL = "https://image.tmdb.org/t/p/w500";
 
 export default async function SeriesDetailPage({
   params,
@@ -27,6 +31,18 @@ export default async function SeriesDetailPage({
     notFound();
   }
 
+  // Started immediately, alongside getTVDetails below - none of these three
+  // depend on the details response.
+  const recommendationsPromise = getTVRecommendations(tvId);
+  const ratingsPromise = getTVRatings(tvId);
+  const creditsPromise = getTVCredits(tvId);
+  // See src/app/movies/[id]/page.tsx - a bad id 404s on every endpoint, so
+  // pre-empt a false "unhandled rejection" if these settle before
+  // getTVDetails below; the real error is still observed via Promise.all.
+  recommendationsPromise.catch(() => {});
+  ratingsPromise.catch(() => {});
+  creditsPromise.catch(() => {});
+
   let details;
   try {
     details = await getTVDetails(tvId);
@@ -38,12 +54,12 @@ export default async function SeriesDetailPage({
   }
 
   const [recommendations, ratings, credits] = await Promise.all([
-    getTVRecommendations(tvId),
-    getTVRatings(tvId),
-    getTVCredits(tvId),
+    recommendationsPromise,
+    ratingsPromise,
+    creditsPromise,
   ]);
   const recommendationsWithRatings = await enrichTVWithRatings(
-    recommendations.results
+    recommendations.results.slice(0, MAX_ENRICHED_RECOMMENDATIONS)
   );
   const topCast = [...credits.cast]
     .sort((a, b) => a.order - b.order)
@@ -59,16 +75,18 @@ export default async function SeriesDetailPage({
         ← Back to Series
       </Link>
       <div className="flex flex-col gap-6 sm:flex-row">
-        <div className="w-full max-w-[220px] shrink-0 overflow-hidden rounded-lg bg-black/[.04] dark:bg-white/[.06]">
+        <div className="relative aspect-[2/3] w-full max-w-[220px] shrink-0 overflow-hidden rounded-lg bg-black/[.04] dark:bg-white/[.06]">
           {details.poster_path ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+            <Image
               src={`${POSTER_BASE_URL}${details.poster_path}`}
               alt={`${details.title} poster`}
-              className="h-full w-full object-cover"
+              fill
+              sizes="(min-width: 640px) 220px, 100vw"
+              priority
+              className="object-cover"
             />
           ) : (
-            <div className="flex aspect-[2/3] items-center justify-center p-4 text-center text-sm text-foreground/60">
+            <div className="flex h-full items-center justify-center p-4 text-center text-sm text-foreground/60">
               No poster available
             </div>
           )}

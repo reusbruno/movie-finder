@@ -35,6 +35,11 @@ function getApiKey(): string {
   return key;
 }
 
+const REQUEST_TIMEOUT_MS = 10_000;
+// Ratings don't change minute to minute - caching here also reduces load on
+// an API that's already prone to hitting its free-tier rate limit.
+const REVALIDATE_SECONDS = 300;
+
 async function omdbFetch(
   params: Record<string, string>
 ): Promise<OMDBTitleResponse> {
@@ -44,7 +49,10 @@ async function omdbFetch(
     url.searchParams.set(key, value);
   }
 
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    next: { revalidate: REVALIDATE_SECONDS },
+  });
 
   if (!response.ok) {
     // OMDb returns a JSON body even on 401 (e.g. {"Response":"False",

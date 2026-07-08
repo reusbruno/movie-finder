@@ -28,11 +28,17 @@ function getApiKey(): string {
   return key;
 }
 
+const REQUEST_TIMEOUT_MS = 10_000;
+const REVALIDATE_SECONDS = 300;
+
 async function mdblistFetch(path: string): Promise<MDBListTitleResponse> {
   const url = new URL(`${MDBLIST_API_BASE_URL}${path}`);
   url.searchParams.set("apikey", getApiKey());
 
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    next: { revalidate: REVALIDATE_SECONDS },
+  });
 
   if (!response.ok) {
     throw new MDBListError(
