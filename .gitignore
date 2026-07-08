@@ -27,6 +27,10 @@
 .DS_Store
 *.pem
 
+# graphify experiment artifacts
+/.venv
+/graphify-out
+
 # debug
 npm-debug.log*
 yarn-debug.log*
