@@ -6,9 +6,13 @@ export function AppHeader() {
     <header className="flex items-center justify-between gap-4 border-b border-black/[.08] px-6 py-4 dark:border-white/[.145]">
       <Link
         href="/movies"
-        className="font-display text-lg tracking-wide text-foreground transition-colors hover:text-foreground/70"
+        className="flex items-center gap-2 transition-opacity hover:opacity-80"
       >
-        Movie Finder
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo.svg" alt="" className="h-7 w-7" aria-hidden="true" />
+        <span className="font-display text-lg tracking-[0.15em] text-accent">
+          KINDRED
+        </span>
       </Link>
       <ModeToggle />
     </header>

@@ -22,7 +22,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build plan
 
-Rough order of remaining work for this movie-finder app:
+Rough order of remaining work for this app (Kindred):
 
 1. ~~Server-side TMDB client + API routes~~ — done (`src/lib/tmdb.ts`, `src/app/api/movies/search`, `src/app/api/movies/[id]`). Verified against the live TMDB API; env-var handling checked clean (no raw token anywhere outside `.env.local`).
 2. Movies/Series toggle + shared UI shell (layout/nav common to both modes).

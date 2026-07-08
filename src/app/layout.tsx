@@ -21,8 +21,11 @@ const bebasNeue = Bebas_Neue({
 });
 
 export const metadata: Metadata = {
-  title: "Movie Finder",
+  title: "Kindred",
   description: "Search and browse movies and series.",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({
