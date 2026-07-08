@@ -4,11 +4,17 @@ import { ScoreBadges } from "@/components/score-badges";
 
 const POSTER_BASE_URL = "https://image.tmdb.org/t/p/w342";
 
-export function MovieCard({ movie }: { movie: MovieWithRatings }) {
+export function MovieCard({
+  movie,
+  basePath = "movies",
+}: {
+  movie: MovieWithRatings;
+  basePath?: "movies" | "series";
+}) {
   const year = movie.release_date ? movie.release_date.slice(0, 4) : null;
 
   return (
-    <Link href={`/movies/${movie.id}`} className="flex flex-col gap-2">
+    <Link href={`/${basePath}/${movie.id}`} className="flex flex-col gap-2">
       <div className="aspect-[2/3] w-full overflow-hidden rounded-lg bg-black/[.04] dark:bg-white/[.06]">
         {movie.poster_path ? (
           // eslint-disable-next-line @next/next/no-img-element

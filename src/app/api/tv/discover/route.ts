@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  discoverMovies,
-  MOVIE_SORT_OPTIONS,
+  discoverTV,
   TMDB_MAX_DISCOVER_PAGE,
   TMDBError,
-  type MovieSortBy,
+  TV_SORT_OPTIONS,
+  type TVSortBy,
 } from "@/lib/tmdb";
-import { enrichMoviesWithRatings, passesRatingFilters } from "@/lib/ratings";
+import { enrichTVWithRatings, passesRatingFilters } from "@/lib/ratings";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -28,10 +28,10 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const sortBy = (sortParam ?? "popularity.desc") as MovieSortBy;
-  if (!MOVIE_SORT_OPTIONS.includes(sortBy)) {
+  const sortBy = (sortParam ?? "popularity.desc") as TVSortBy;
+  if (!TV_SORT_OPTIONS.includes(sortBy)) {
     return NextResponse.json(
-      { error: `Query parameter 'sort_by' must be one of: ${MOVIE_SORT_OPTIONS.join(", ")}` },
+      { error: `Query parameter 'sort_by' must be one of: ${TV_SORT_OPTIONS.join(", ")}` },
       { status: 400 }
     );
   }
@@ -71,10 +71,10 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const results = await discoverMovies({ genreIds, sortBy, page });
-    const enriched = await enrichMoviesWithRatings(results.results);
-    const filtered = enriched.filter((movie) =>
-      passesRatingFilters(movie.ratings, minImdb, minRt)
+    const results = await discoverTV({ genreIds, sortBy, page });
+    const enriched = await enrichTVWithRatings(results.results);
+    const filtered = enriched.filter((show) =>
+      passesRatingFilters(show.ratings, minImdb, minRt)
     );
     return NextResponse.json({ ...results, results: filtered });
   } catch (error) {
@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
     return NextResponse.json(
-      { error: "Failed to discover movies" },
+      { error: "Failed to discover TV shows" },
       { status: 500 }
     );
   }

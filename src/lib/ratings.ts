@@ -1,4 +1,8 @@
-import { getMovieExternalIds, type TMDBMovie } from "@/lib/tmdb";
+import {
+  getMovieExternalIds,
+  getTVExternalIds,
+  type TMDBMovie,
+} from "@/lib/tmdb";
 import { getMovieRatingsByImdbId, type MovieRatings } from "@/lib/omdb";
 
 const EMPTY_RATINGS: MovieRatings = {
@@ -6,46 +10,100 @@ const EMPTY_RATINGS: MovieRatings = {
   rottenTomatoesScore: null,
 };
 
-// In-process memoization only: no persistence, no TTL, resets on every
-// server restart. Just avoids re-fetching OMDb for the same movie
-// repeatedly within one dev/server run (e.g. reloading the same
-// Popular grid). Not the caching layer the build plan defers.
-const ratingsCache = new Map<number, Promise<MovieRatings>>();
+type MediaType = "movie" | "tv";
 
-async function fetchRatingsForMovie(tmdbId: number): Promise<MovieRatings> {
-  const externalIds = await getMovieExternalIds(tmdbId);
+// In-process memoization only: no persistence, no TTL, resets on every
+// server restart. Just avoids re-fetching OMDb for the same title
+// repeatedly within one dev/server run (e.g. reloading the same
+// Popular grid). Not the caching layer the build plan defers. Keyed by
+// media type + id since movie and TV ids are separate TMDB id spaces.
+const ratingsCache = new Map<string, Promise<MovieRatings>>();
+
+async function fetchRatings(
+  mediaType: MediaType,
+  tmdbId: number
+): Promise<MovieRatings> {
+  const externalIds =
+    mediaType === "movie"
+      ? await getMovieExternalIds(tmdbId)
+      : await getTVExternalIds(tmdbId);
+
   if (!externalIds.imdb_id) {
     return EMPTY_RATINGS;
   }
   return getMovieRatingsByImdbId(externalIds.imdb_id);
 }
 
-export function getMovieRatings(tmdbId: number): Promise<MovieRatings> {
-  let cached = ratingsCache.get(tmdbId);
+function getRatings(mediaType: MediaType, tmdbId: number): Promise<MovieRatings> {
+  const key = `${mediaType}:${tmdbId}`;
+  let cached = ratingsCache.get(key);
   if (!cached) {
-    cached = fetchRatingsForMovie(tmdbId).catch((error: unknown) => {
-      ratingsCache.delete(tmdbId);
+    cached = fetchRatings(mediaType, tmdbId).catch((error: unknown) => {
+      ratingsCache.delete(key);
       throw error;
     });
-    ratingsCache.set(tmdbId, cached);
+    ratingsCache.set(key, cached);
   }
   return cached;
 }
 
+export function getMovieRatings(tmdbId: number): Promise<MovieRatings> {
+  return getRatings("movie", tmdbId);
+}
+
+export function getTVRatings(tmdbId: number): Promise<MovieRatings> {
+  return getRatings("tv", tmdbId);
+}
+
 export type MovieWithRatings = TMDBMovie & { ratings: MovieRatings };
 
-export async function enrichMoviesWithRatings(
-  movies: TMDBMovie[]
+async function enrichWithRatings(
+  mediaType: MediaType,
+  items: TMDBMovie[]
 ): Promise<MovieWithRatings[]> {
   const settled = await Promise.allSettled(
-    movies.map((movie) => getMovieRatings(movie.id))
+    items.map((item) => getRatings(mediaType, item.id))
   );
 
-  return movies.map((movie, index) => {
+  return items.map((item, index) => {
     const result = settled[index];
     return {
-      ...movie,
+      ...item,
       ratings: result.status === "fulfilled" ? result.value : EMPTY_RATINGS,
     };
   });
+}
+
+export function enrichMoviesWithRatings(
+  movies: TMDBMovie[]
+): Promise<MovieWithRatings[]> {
+  return enrichWithRatings("movie", movies);
+}
+
+export function enrichTVWithRatings(
+  shows: TMDBMovie[]
+): Promise<MovieWithRatings[]> {
+  return enrichWithRatings("tv", shows);
+}
+
+export function passesRatingFilters(
+  ratings: MovieRatings,
+  minImdb: number | null,
+  minRt: number | null
+): boolean {
+  if (
+    minImdb !== null &&
+    ratings.imdbRating !== null &&
+    ratings.imdbRating < minImdb
+  ) {
+    return false;
+  }
+  if (
+    minRt !== null &&
+    ratings.rottenTomatoesScore !== null &&
+    ratings.rottenTomatoesScore < minRt
+  ) {
+    return false;
+  }
+  return true;
 }

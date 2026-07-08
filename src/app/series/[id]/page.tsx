@@ -1,13 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
-  getMovieCredits,
-  getMovieDetails,
-  getMovieRecommendations,
+  getTVCredits,
+  getTVDetails,
+  getTVRecommendations,
   TMDBError,
 } from "@/lib/tmdb";
-import { getMovieRatingsByImdbId } from "@/lib/omdb";
-import { enrichMoviesWithRatings } from "@/lib/ratings";
+import { enrichTVWithRatings, getTVRatings } from "@/lib/ratings";
 import { MovieGrid } from "@/components/movie-grid";
 import { ScoreBadges } from "@/components/score-badges";
 import { CastList } from "@/components/cast-list";
@@ -16,21 +15,21 @@ const MAX_CAST_MEMBERS = 12;
 
 const POSTER_BASE_URL = "https://image.tmdb.org/t/p/w342";
 
-export default async function MovieDetailPage({
+export default async function SeriesDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const movieId = Number(id);
+  const tvId = Number(id);
 
-  if (!Number.isInteger(movieId) || movieId < 1) {
+  if (!Number.isInteger(tvId) || tvId < 1) {
     notFound();
   }
 
   let details;
   try {
-    details = await getMovieDetails(movieId);
+    details = await getTVDetails(tvId);
   } catch (error) {
     if (error instanceof TMDBError && error.status === 404) {
       notFound();
@@ -39,13 +38,11 @@ export default async function MovieDetailPage({
   }
 
   const [recommendations, ratings, credits] = await Promise.all([
-    getMovieRecommendations(movieId),
-    details.imdb_id
-      ? getMovieRatingsByImdbId(details.imdb_id)
-      : Promise.resolve({ imdbRating: null, rottenTomatoesScore: null }),
-    getMovieCredits(movieId),
+    getTVRecommendations(tvId),
+    getTVRatings(tvId),
+    getTVCredits(tvId),
   ]);
-  const recommendationsWithRatings = await enrichMoviesWithRatings(
+  const recommendationsWithRatings = await enrichTVWithRatings(
     recommendations.results
   );
   const topCast = [...credits.cast]
@@ -56,10 +53,10 @@ export default async function MovieDetailPage({
   return (
     <div className="flex flex-1 flex-col gap-10 px-6 py-8">
       <Link
-        href="/movies"
+        href="/series"
         className="w-fit text-sm text-foreground/60 hover:text-foreground"
       >
-        ← Back to Movies
+        ← Back to Series
       </Link>
       <div className="flex flex-col gap-6 sm:flex-row">
         <div className="w-full max-w-[220px] shrink-0 overflow-hidden rounded-lg bg-black/[.04] dark:bg-white/[.06]">
@@ -94,7 +91,8 @@ export default async function MovieDetailPage({
               imdbRating={ratings.imdbRating}
               rtScore={ratings.rottenTomatoesScore}
             />
-            {details.runtime ? ` · ${details.runtime} min` : ""}
+            {` · ${details.number_of_seasons} season${details.number_of_seasons === 1 ? "" : "s"}`}
+            {` · ${details.number_of_episodes} episodes`}
             {details.genres.length > 0
               ? ` · ${details.genres.map((genre) => genre.name).join(", ")}`
               : ""}
@@ -116,7 +114,7 @@ export default async function MovieDetailPage({
         <h2 className="text-lg font-semibold tracking-tight">
           More like this
         </h2>
-        <MovieGrid movies={recommendationsWithRatings} />
+        <MovieGrid movies={recommendationsWithRatings} basePath="series" />
       </div>
     </div>
   );

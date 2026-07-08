@@ -1,18 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { MovieWithRatings } from "@/lib/ratings";
-import { MovieGrid } from "@/components/movie-grid";
+import type { TMDBPerson } from "@/lib/tmdb";
+import { ActorGrid } from "@/components/actor-grid";
 
 const DEBOUNCE_MS = 400;
 
-export function MovieSearch({
-  initialMovies,
+export function ActorSearch({
+  initialPeople,
 }: {
-  initialMovies: MovieWithRatings[];
+  initialPeople: TMDBPerson[];
 }) {
   const [query, setQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<MovieWithRatings[] | null>(
+  const [searchResults, setSearchResults] = useState<TMDBPerson[] | null>(
     null
   );
   const [loading, setLoading] = useState(false);
@@ -37,19 +37,19 @@ export function MovieSearch({
 
       try {
         const response = await fetch(
-          `/api/movies/search?query=${encodeURIComponent(trimmedQuery)}`,
+          `/api/people/search?query=${encodeURIComponent(trimmedQuery)}`,
           { signal: controller.signal }
         );
         const data = await response.json();
 
         if (!response.ok) {
-          throw new Error(data.error ?? "Failed to search movies");
+          throw new Error(data.error ?? "Failed to search actors");
         }
 
         setSearchResults(data.results);
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return;
-        setError(err instanceof Error ? err.message : "Failed to search movies");
+        setError(err instanceof Error ? err.message : "Failed to search actors");
       } finally {
         setLoading(false);
       }
@@ -58,8 +58,10 @@ export function MovieSearch({
     return () => clearTimeout(timeout);
   }, [trimmedQuery]);
 
-  const movies = trimmedQuery ? (searchResults ?? []) : initialMovies;
-  const heading = trimmedQuery ? `Results for "${trimmedQuery}"` : "Popular movies";
+  const people = trimmedQuery ? (searchResults ?? []) : initialPeople;
+  const heading = trimmedQuery
+    ? `Results for "${trimmedQuery}"`
+    : "Trending actors";
   const showLoading = trimmedQuery !== "" && loading;
   const showError = trimmedQuery !== "" ? error : null;
 
@@ -69,8 +71,8 @@ export function MovieSearch({
         type="search"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
-        placeholder="Search movies…"
-        aria-label="Search movies"
+        placeholder="Search actors…"
+        aria-label="Search actors"
         className="w-full max-w-md rounded-full border border-black/[.08] bg-transparent px-4 py-2 text-sm outline-none focus:border-foreground/40 dark:border-white/[.145]"
       />
       <div className="flex items-center justify-between">
@@ -80,7 +82,7 @@ export function MovieSearch({
       {showError ? (
         <p className="text-sm text-red-600 dark:text-red-400">{showError}</p>
       ) : (
-        <MovieGrid movies={movies} />
+        <ActorGrid people={people} />
       )}
     </div>
   );

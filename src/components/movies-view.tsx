@@ -1,14 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import type { TMDBGenre } from "@/lib/tmdb";
+import type { TMDBGenre, TMDBPerson } from "@/lib/tmdb";
 import type { MovieWithRatings } from "@/lib/ratings";
-import { MovieSearch } from "@/components/movie-search";
-import { MovieBrowse } from "@/components/movie-browse";
+import { MoviesExplorer } from "@/components/movies-explorer";
+import { ActorSearch } from "@/components/actor-search";
 
 const TABS = [
-  { id: "search", label: "Search" },
-  { id: "browse", label: "Browse" },
+  { id: "movies", label: "Movies" },
+  { id: "actors", label: "Actors" },
 ] as const;
 
 type Tab = (typeof TABS)[number]["id"];
@@ -16,11 +16,13 @@ type Tab = (typeof TABS)[number]["id"];
 export function MoviesView({
   initialMovies,
   genres,
+  initialPeople,
 }: {
   initialMovies: MovieWithRatings[];
   genres: TMDBGenre[];
+  initialPeople: TMDBPerson[];
 }) {
-  const [tab, setTab] = useState<Tab>("search");
+  const [tab, setTab] = useState<Tab>("movies");
 
   return (
     <div className="flex flex-1 flex-col">
@@ -41,10 +43,10 @@ export function MoviesView({
           </button>
         ))}
       </div>
-      {tab === "search" ? (
-        <MovieSearch initialMovies={initialMovies} />
+      {tab === "movies" ? (
+        <MoviesExplorer initialMovies={initialMovies} genres={genres} />
       ) : (
-        <MovieBrowse genres={genres} />
+        <ActorSearch initialPeople={initialPeople} />
       )}
     </div>
   );
