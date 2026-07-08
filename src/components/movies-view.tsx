@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import type { TMDBGenre, TMDBPerson } from "@/lib/tmdb";
+import type { TMDBGenre, TMDBPerson, MovieSortBy } from "@/lib/tmdb";
 import type { MovieWithRatings } from "@/lib/ratings";
-import { MoviesExplorer } from "@/components/movies-explorer";
+import { MediaExplorer, type MediaExplorerConfig } from "@/components/media-explorer";
 import { ActorSearch } from "@/components/actor-search";
 
 const TABS = [
@@ -12,6 +12,22 @@ const TABS = [
 ] as const;
 
 type Tab = (typeof TABS)[number]["id"];
+
+const MOVIES_CONFIG: MediaExplorerConfig<MovieSortBy> = {
+  basePath: "movies",
+  searchEndpoint: "/api/movies/search",
+  discoverEndpoint: "/api/movies/discover",
+  searchPlaceholder: "Search movies…",
+  sortOptions: [
+    { value: "popularity.desc", label: "Popularity" },
+    { value: "vote_average.desc", label: "Top Rated" },
+    { value: "primary_release_date.desc", label: "Newest" },
+    { value: "title.asc", label: "Title (A-Z)" },
+  ],
+  defaultSort: "popularity.desc",
+  popularHeading: "Popular movies",
+  itemsLabel: "movies",
+};
 
 export function MoviesView({
   initialMovies,
@@ -44,7 +60,11 @@ export function MoviesView({
         ))}
       </div>
       {tab === "movies" ? (
-        <MoviesExplorer initialMovies={initialMovies} genres={genres} />
+        <MediaExplorer
+          initialItems={initialMovies}
+          genres={genres}
+          config={MOVIES_CONFIG}
+        />
       ) : (
         <ActorSearch initialPeople={initialPeople} />
       )}

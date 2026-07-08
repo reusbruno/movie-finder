@@ -13,11 +13,11 @@ const POSTER_SIZES =
 export function MovieCard({
   movie,
   basePath = "movies",
-  priority = false,
+  eager = false,
 }: {
   movie: MovieWithRatings;
   basePath?: "movies" | "series";
-  priority?: boolean;
+  eager?: boolean;
 }) {
   const year = movie.release_date ? movie.release_date.slice(0, 4) : null;
 
@@ -32,7 +32,7 @@ export function MovieCard({
           alt={`${movie.title} poster`}
           fill
           sizes={POSTER_SIZES}
-          priority={priority}
+          loading={eager ? "eager" : "lazy"}
           className="object-cover"
         />
       ) : (

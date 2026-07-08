@@ -1,39 +1,54 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import {
-  TMDB_MAX_DISCOVER_PAGE,
-  type TVSortBy,
-  type TMDBGenre,
-} from "@/lib/tmdb";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { TMDB_MAX_DISCOVER_PAGE, type TMDBGenre } from "@/lib/tmdb";
 import type { MovieWithRatings } from "@/lib/ratings";
 import { MovieGrid } from "@/components/movie-grid";
 import { GenreFilter } from "@/components/genre-filter";
 import { FilterPanel } from "@/components/filter-panel";
 
 const SEARCH_DEBOUNCE_MS = 400;
-
-const SORT_OPTIONS: { value: TVSortBy; label: string }[] = [
-  { value: "popularity.desc", label: "Popularity" },
-  { value: "vote_average.desc", label: "Top Rated" },
-  { value: "first_air_date.desc", label: "Newest" },
-  { value: "name.asc", label: "Title (A-Z)" },
-];
-const DEFAULT_SORT = SORT_OPTIONS[0].value;
-
 const MIN_IMDB_OPTIONS = ["", "6", "7", "8", "9"] as const;
 const MIN_RT_OPTIONS = ["", "25", "50", "75", "90"] as const;
 
-export function SeriesExplorer({
-  initialShows,
+export interface MediaExplorerConfig<TSortBy extends string> {
+  basePath: "movies" | "series";
+  searchEndpoint: string;
+  discoverEndpoint: string;
+  searchPlaceholder: string;
+  sortOptions: { value: TSortBy; label: string }[];
+  defaultSort: TSortBy;
+  popularHeading: string;
+  // Used to build error messages, e.g. "Failed to search movies" / "Failed to load TV shows".
+  itemsLabel: string;
+  // Optional extra note rendered below the filter controls (e.g. series' RT-score caveat).
+  filterFootnote?: ReactNode;
+}
+
+export function MediaExplorer<TSortBy extends string>({
+  initialItems,
   genres,
+  config,
 }: {
-  initialShows: MovieWithRatings[];
+  initialItems: MovieWithRatings[];
   genres: TMDBGenre[];
+  config: MediaExplorerConfig<TSortBy>;
 }) {
+  const {
+    basePath,
+    searchEndpoint,
+    discoverEndpoint,
+    searchPlaceholder,
+    sortOptions,
+    defaultSort,
+    popularHeading,
+    itemsLabel,
+    filterFootnote,
+  } = config;
+
   const [query, setQuery] = useState("");
   const [selectedGenres, setSelectedGenres] = useState<number[]>([]);
-  const [sortBy, setSortBy] = useState<TVSortBy>(DEFAULT_SORT);
+  const [sortBy, setSortBy] = useState<TSortBy>(defaultSort);
   const [minImdb, setMinImdb] = useState("");
   const [minRt, setMinRt] = useState("");
 
@@ -62,7 +77,7 @@ export function SeriesExplorer({
 
   const trimmedQuery = query.trim();
   const filtersActive =
-    sortBy !== DEFAULT_SORT ||
+    sortBy !== defaultSort ||
     selectedGenres.length > 0 ||
     minImdb !== "" ||
     minRt !== "";
@@ -110,7 +125,7 @@ export function SeriesExplorer({
 
       try {
         const response = await fetch(
-          `/api/tv/search?query=${encodeURIComponent(trimmedQuery)}`,
+          `${searchEndpoint}?query=${encodeURIComponent(trimmedQuery)}`,
           { signal: controller.signal }
         );
         const data = await response.json();
@@ -118,14 +133,16 @@ export function SeriesExplorer({
         if (requestId !== searchRequestIdRef.current) return;
 
         if (!response.ok) {
-          throw new Error(data.error ?? "Failed to search TV shows");
+          throw new Error(data.error ?? `Failed to search ${itemsLabel}`);
         }
 
         setSearchResults(data.results);
       } catch (err) {
         if (requestId !== searchRequestIdRef.current) return;
         if (err instanceof DOMException && err.name === "AbortError") return;
-        setSearchError(err instanceof Error ? err.message : "Failed to search TV shows");
+        setSearchError(
+          err instanceof Error ? err.message : `Failed to search ${itemsLabel}`
+        );
       } finally {
         if (requestId === searchRequestIdRef.current) {
           setSearchLoading(false);
@@ -134,7 +151,7 @@ export function SeriesExplorer({
     }, SEARCH_DEBOUNCE_MS);
 
     return () => clearTimeout(timeout);
-  }, [trimmedQuery]);
+  }, [trimmedQuery, searchEndpoint, itemsLabel]);
 
   // Only runs when there's no query and at least one filter differs from
   // its default - otherwise the static Popular grid is shown, no fetch.
@@ -157,7 +174,7 @@ export function SeriesExplorer({
       try {
         const params = buildDiscoverParams(1);
 
-        const response = await fetch(`/api/tv/discover?${params.toString()}`, {
+        const response = await fetch(`${discoverEndpoint}?${params.toString()}`, {
           signal: controller.signal,
         });
         const data = await response.json();
@@ -165,7 +182,7 @@ export function SeriesExplorer({
         if (requestId !== discoverRequestIdRef.current) return;
 
         if (!response.ok) {
-          throw new Error(data.error ?? "Failed to load TV shows");
+          throw new Error(data.error ?? `Failed to load ${itemsLabel}`);
         }
 
         setDiscoverResults(data.results);
@@ -174,7 +191,9 @@ export function SeriesExplorer({
       } catch (err) {
         if (requestId !== discoverRequestIdRef.current) return;
         if (err instanceof DOMException && err.name === "AbortError") return;
-        setDiscoverError(err instanceof Error ? err.message : "Failed to load TV shows");
+        setDiscoverError(
+          err instanceof Error ? err.message : `Failed to load ${itemsLabel}`
+        );
       } finally {
         if (requestId === discoverRequestIdRef.current) {
           setDiscoverLoading(false);
@@ -184,7 +203,7 @@ export function SeriesExplorer({
 
     return () => clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trimmedQuery, selectedGenres, sortBy, minImdb, minRt]);
+  }, [trimmedQuery, selectedGenres, sortBy, minImdb, minRt, discoverEndpoint, itemsLabel]);
 
   async function loadMoreDiscover() {
     discoverAbortRef.current?.abort();
@@ -200,7 +219,7 @@ export function SeriesExplorer({
     try {
       const params = buildDiscoverParams(nextPage);
 
-      const response = await fetch(`/api/tv/discover?${params.toString()}`, {
+      const response = await fetch(`${discoverEndpoint}?${params.toString()}`, {
         signal: controller.signal,
       });
       const data = await response.json();
@@ -208,7 +227,7 @@ export function SeriesExplorer({
       if (requestId !== discoverRequestIdRef.current) return;
 
       if (!response.ok) {
-        throw new Error(data.error ?? "Failed to load TV shows");
+        throw new Error(data.error ?? `Failed to load ${itemsLabel}`);
       }
 
       setDiscoverResults((prev) => [...(prev ?? []), ...data.results]);
@@ -217,7 +236,9 @@ export function SeriesExplorer({
     } catch (err) {
       if (requestId !== discoverRequestIdRef.current) return;
       if (err instanceof DOMException && err.name === "AbortError") return;
-      setDiscoverError(err instanceof Error ? err.message : "Failed to load TV shows");
+      setDiscoverError(
+        err instanceof Error ? err.message : `Failed to load ${itemsLabel}`
+      );
     } finally {
       if (requestId === discoverRequestIdRef.current) {
         setDiscoverLoadingMore(false);
@@ -225,19 +246,19 @@ export function SeriesExplorer({
     }
   }
 
-  const shows =
+  const items =
     mode === "search"
       ? (searchResults ?? [])
       : mode === "discover"
         ? (discoverResults ?? [])
-        : initialShows;
+        : initialItems;
 
   const heading =
     mode === "search"
       ? `Results for "${trimmedQuery}"`
       : mode === "discover"
         ? "Filtered results"
-        : "Popular series";
+        : popularHeading;
 
   const loading = mode === "search" ? searchLoading : mode === "discover" ? discoverLoading : false;
   const error = mode === "search" ? searchError : mode === "discover" ? discoverError : null;
@@ -248,7 +269,7 @@ export function SeriesExplorer({
 
   const activeFilterCount =
     (selectedGenres.length > 0 ? 1 : 0) +
-    (sortBy !== DEFAULT_SORT ? 1 : 0) +
+    (sortBy !== defaultSort ? 1 : 0) +
     (minImdb ? 1 : 0) +
     (minRt ? 1 : 0);
 
@@ -259,8 +280,8 @@ export function SeriesExplorer({
           type="search"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search series…"
-          aria-label="Search series"
+          placeholder={searchPlaceholder}
+          aria-label={searchPlaceholder.replace("…", "")}
           className="w-full max-w-md rounded-full border border-black/[.08] bg-transparent px-4 py-2 text-sm outline-none focus:border-foreground/40 dark:border-white/[.145]"
         />
         <FilterPanel activeCount={activeFilterCount}>
@@ -274,10 +295,10 @@ export function SeriesExplorer({
               Sort by
               <select
                 value={sortBy}
-                onChange={(event) => setSortBy(event.target.value as TVSortBy)}
+                onChange={(event) => setSortBy(event.target.value as TSortBy)}
                 className="rounded-md border border-black/[.08] bg-transparent px-2 py-1 text-foreground outline-none focus:border-foreground/40 dark:border-white/[.145]"
               >
-                {SORT_OPTIONS.map((option) => (
+                {sortOptions.map((option) => (
                   <option
                     key={option.value}
                     value={option.value}
@@ -325,11 +346,7 @@ export function SeriesExplorer({
               </select>
             </label>
           </div>
-          <p className="text-xs text-foreground/50">
-            Rotten Tomatoes scores are frequently unavailable for TV shows in
-            our data source, even for popular ones — a missing score
-            doesn&apos;t mean it doesn&apos;t exist elsewhere.
-          </p>
+          {filterFootnote}
         </FilterPanel>
       </div>
 
@@ -346,7 +363,7 @@ export function SeriesExplorer({
             className={`transition-opacity duration-150 ${loading ? "opacity-40" : "opacity-100"}`}
             aria-busy={loading}
           >
-            <MovieGrid movies={shows} basePath="series" />
+            <MovieGrid movies={items} basePath={basePath} eagerFirstRow />
           </div>
           {canLoadMore && (
             <button

@@ -84,7 +84,7 @@ export default async function ActorDetailPage({
               alt={details.name}
               fill
               sizes="(min-width: 640px) 220px, 100vw"
-              priority
+              preload
               className="object-cover"
             />
           ) : (

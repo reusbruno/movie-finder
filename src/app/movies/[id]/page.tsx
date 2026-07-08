@@ -103,7 +103,7 @@ export default async function MovieDetailPage({
               alt={`${details.title} poster`}
               fill
               sizes="(min-width: 640px) 220px, 100vw"
-              priority
+              preload
               className="object-cover"
             />
           ) : (

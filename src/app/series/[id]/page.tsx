@@ -82,7 +82,7 @@ export default async function SeriesDetailPage({
               alt={`${details.title} poster`}
               fill
               sizes="(min-width: 640px) 220px, 100vw"
-              priority
+              preload
               className="object-cover"
             />
           ) : (
