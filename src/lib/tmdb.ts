@@ -164,12 +164,25 @@ export const TMDB_MAX_DISCOVER_PAGE = 500;
 const DEFAULT_MIN_VOTE_COUNT = 50;
 const TOP_RATED_MIN_VOTE_COUNT = 200;
 
+export interface TMDBYearRange {
+  gte?: number;
+  lte?: number;
+}
+
 export function discoverMovies(options: {
   genreIds?: number[];
+  keywordIds?: number[];
   sortBy?: MovieSortBy;
   page?: number;
+  yearRange?: TMDBYearRange;
 }): Promise<TMDBSearchResponse> {
-  const { genreIds = [], sortBy = "popularity.desc", page = 1 } = options;
+  const {
+    genreIds = [],
+    keywordIds = [],
+    sortBy = "popularity.desc",
+    page = 1,
+    yearRange,
+  } = options;
 
   const params: Record<string, string> = {
     sort_by: sortBy,
@@ -181,8 +194,41 @@ export function discoverMovies(options: {
   if (genreIds.length > 0) {
     params.with_genres = genreIds.join("|");
   }
+  if (keywordIds.length > 0) {
+    params.with_keywords = keywordIds.join("|");
+  }
+  if (yearRange?.gte) {
+    params["primary_release_date.gte"] = `${yearRange.gte}-01-01`;
+  }
+  if (yearRange?.lte) {
+    params["primary_release_date.lte"] = `${yearRange.lte}-12-31`;
+  }
 
   return tmdbFetch<TMDBSearchResponse>("/discover/movie", params);
+}
+
+export interface TMDBKeyword {
+  id: number;
+  name: string;
+}
+
+export function searchKeywords(query: string): Promise<{ results: TMDBKeyword[] }> {
+  return tmdbFetch<{ results: TMDBKeyword[] }>(
+    "/search/keyword",
+    { query },
+    REVALIDATE.search
+  );
+}
+
+// TMDB's movie and TV keyword endpoints use different response keys
+// ("keywords" vs "results") for the same shape - callers use
+// getMovieKeywords/getTVKeywords directly rather than a shared helper.
+export function getMovieKeywords(id: number): Promise<{ id: number; keywords: TMDBKeyword[] }> {
+  return tmdbFetch<{ id: number; keywords: TMDBKeyword[] }>(`/movie/${id}/keywords`);
+}
+
+export function getTVKeywords(id: number): Promise<{ id: number; results: TMDBKeyword[] }> {
+  return tmdbFetch<{ id: number; results: TMDBKeyword[] }>(`/tv/${id}/keywords`);
 }
 
 export interface TMDBKnownForItem {
@@ -379,10 +425,18 @@ export type TVSortBy = (typeof TV_SORT_OPTIONS)[number];
 
 export function discoverTV(options: {
   genreIds?: number[];
+  keywordIds?: number[];
   sortBy?: TVSortBy;
   page?: number;
+  yearRange?: TMDBYearRange;
 }): Promise<TMDBSearchResponse> {
-  const { genreIds = [], sortBy = "popularity.desc", page = 1 } = options;
+  const {
+    genreIds = [],
+    keywordIds = [],
+    sortBy = "popularity.desc",
+    page = 1,
+    yearRange,
+  } = options;
 
   const params: Record<string, string> = {
     sort_by: sortBy,
@@ -393,6 +447,15 @@ export function discoverTV(options: {
   };
   if (genreIds.length > 0) {
     params.with_genres = genreIds.join("|");
+  }
+  if (keywordIds.length > 0) {
+    params.with_keywords = keywordIds.join("|");
+  }
+  if (yearRange?.gte) {
+    params["first_air_date.gte"] = `${yearRange.gte}-01-01`;
+  }
+  if (yearRange?.lte) {
+    params["first_air_date.lte"] = `${yearRange.lte}-12-31`;
   }
 
   return tmdbFetch<RawTMDBSearchResponse>("/discover/tv", params).then(

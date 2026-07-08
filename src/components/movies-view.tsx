@@ -17,6 +17,7 @@ const MOVIES_CONFIG: MediaExplorerConfig<MovieSortBy> = {
   basePath: "movies",
   searchEndpoint: "/api/movies/search",
   discoverEndpoint: "/api/movies/discover",
+  moodSearchEndpoint: "/api/movies/mood-search",
   searchPlaceholder: "Search movies…",
   sortOptions: [
     { value: "popularity.desc", label: "Popularity" },

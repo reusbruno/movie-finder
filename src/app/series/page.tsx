@@ -9,6 +9,7 @@ const SERIES_CONFIG: MediaExplorerConfig<TVSortBy> = {
   basePath: "series",
   searchEndpoint: "/api/tv/search",
   discoverEndpoint: "/api/tv/discover",
+  moodSearchEndpoint: "/api/tv/mood-search",
   searchPlaceholder: "Search series…",
   sortOptions: [
     { value: "popularity.desc", label: "Popularity" },

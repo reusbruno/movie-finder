@@ -11,10 +11,17 @@ const SEARCH_DEBOUNCE_MS = 400;
 const MIN_IMDB_OPTIONS = ["", "6", "7", "8", "9"] as const;
 const MIN_RT_OPTIONS = ["", "25", "50", "75", "90"] as const;
 
+interface MoodInterpretation {
+  genreNames: string[];
+  keywordTerms: string[];
+  sortBy: string;
+}
+
 export interface MediaExplorerConfig<TSortBy extends string> {
   basePath: "movies" | "series";
   searchEndpoint: string;
   discoverEndpoint: string;
+  moodSearchEndpoint: string;
   searchPlaceholder: string;
   sortOptions: { value: TSortBy; label: string }[];
   defaultSort: TSortBy;
@@ -38,6 +45,7 @@ export function MediaExplorer<TSortBy extends string>({
     basePath,
     searchEndpoint,
     discoverEndpoint,
+    moodSearchEndpoint,
     searchPlaceholder,
     sortOptions,
     defaultSort,
@@ -51,6 +59,20 @@ export function MediaExplorer<TSortBy extends string>({
   const [sortBy, setSortBy] = useState<TSortBy>(defaultSort);
   const [minImdb, setMinImdb] = useState("");
   const [minRt, setMinRt] = useState("");
+
+  // null while the availability check is in flight - the input renders
+  // disabled either way, so there's no flash of an enabled box.
+  const [moodAvailable, setMoodAvailable] = useState<boolean | null>(null);
+  const [moodInput, setMoodInput] = useState("");
+  const [moodQuery, setMoodQuery] = useState("");
+  const [moodResults, setMoodResults] = useState<MovieWithRatings[] | null>(null);
+  const [moodInterpretation, setMoodInterpretation] = useState<MoodInterpretation | null>(
+    null
+  );
+  const [moodLoading, setMoodLoading] = useState(false);
+  const [moodError, setMoodError] = useState<string | null>(null);
+  const moodAbortRef = useRef<AbortController | null>(null);
+  const moodRequestIdRef = useRef(0);
 
   const [searchResults, setSearchResults] = useState<MovieWithRatings[] | null>(
     null
@@ -82,13 +104,117 @@ export function MediaExplorer<TSortBy extends string>({
     minImdb !== "" ||
     minRt !== "";
 
-  const mode: "search" | "discover" | "popular" =
-    trimmedQuery !== "" ? "search" : filtersActive ? "discover" : "popular";
+  // Mood search is an explicit, deliberate action (submit, not live-typing),
+  // so it takes priority over the passive search/filter modes until cleared.
+  const mode: "mood" | "search" | "discover" | "popular" =
+    moodQuery !== ""
+      ? "mood"
+      : trimmedQuery !== ""
+        ? "search"
+        : filtersActive
+          ? "discover"
+          : "popular";
+
+  function clearMood() {
+    moodAbortRef.current?.abort();
+    moodRequestIdRef.current += 1;
+    setMoodQuery("");
+    setMoodResults(null);
+    setMoodInterpretation(null);
+    setMoodError(null);
+    setMoodLoading(false);
+  }
+
+  function updateQuery(value: string) {
+    if (moodQuery) clearMood();
+    setQuery(value);
+  }
 
   function toggleGenre(id: number) {
+    if (moodQuery) clearMood();
     setSelectedGenres((prev) =>
       prev.includes(id) ? prev.filter((genreId) => genreId !== id) : [...prev, id]
     );
+  }
+
+  function updateSortBy(value: TSortBy) {
+    if (moodQuery) clearMood();
+    setSortBy(value);
+  }
+
+  function updateMinImdb(value: string) {
+    if (moodQuery) clearMood();
+    setMinImdb(value);
+  }
+
+  function updateMinRt(value: string) {
+    if (moodQuery) clearMood();
+    setMinRt(value);
+  }
+
+  // Checked once on mount - the mood input renders visible-but-disabled
+  // until this resolves, rather than only failing on first submit.
+  useEffect(() => {
+    let cancelled = false;
+    fetch(moodSearchEndpoint)
+      .then((response) => response.json())
+      .then((data) => {
+        if (!cancelled) setMoodAvailable(Boolean(data.available));
+      })
+      .catch(() => {
+        if (!cancelled) setMoodAvailable(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [moodSearchEndpoint]);
+
+  async function submitMood(rawQuery: string) {
+    const trimmed = rawQuery.trim();
+    if (!trimmed || !moodAvailable) return;
+
+    moodAbortRef.current?.abort();
+    const controller = new AbortController();
+    moodAbortRef.current = controller;
+    const requestId = ++moodRequestIdRef.current;
+
+    setQuery("");
+    setSelectedGenres([]);
+    setSortBy(defaultSort);
+    setMinImdb("");
+    setMinRt("");
+    setMoodQuery(trimmed);
+    setMoodLoading(true);
+    setMoodError(null);
+
+    try {
+      const response = await fetch(moodSearchEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: trimmed }),
+        signal: controller.signal,
+      });
+      const data = await response.json();
+
+      if (requestId !== moodRequestIdRef.current) return;
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Failed to interpret mood query");
+      }
+
+      setMoodResults(data.results);
+      setMoodInterpretation(data.interpretation ?? null);
+    } catch (err) {
+      if (requestId !== moodRequestIdRef.current) return;
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      setMoodError(
+        err instanceof Error ? err.message : "Failed to interpret mood query"
+      );
+    } finally {
+      if (requestId === moodRequestIdRef.current) {
+        setMoodLoading(false);
+      }
+    }
   }
 
   function buildDiscoverParams(targetPage: number) {
@@ -247,21 +373,41 @@ export function MediaExplorer<TSortBy extends string>({
   }
 
   const items =
-    mode === "search"
-      ? (searchResults ?? [])
-      : mode === "discover"
-        ? (discoverResults ?? [])
-        : initialItems;
+    mode === "mood"
+      ? (moodResults ?? [])
+      : mode === "search"
+        ? (searchResults ?? [])
+        : mode === "discover"
+          ? (discoverResults ?? [])
+          : initialItems;
 
   const heading =
-    mode === "search"
-      ? `Results for "${trimmedQuery}"`
-      : mode === "discover"
-        ? "Filtered results"
-        : popularHeading;
+    mode === "mood"
+      ? `Mood: "${moodQuery}"`
+      : mode === "search"
+        ? `Results for "${trimmedQuery}"`
+        : mode === "discover"
+          ? "Filtered results"
+          : popularHeading;
 
-  const loading = mode === "search" ? searchLoading : mode === "discover" ? discoverLoading : false;
-  const error = mode === "search" ? searchError : mode === "discover" ? discoverError : null;
+  const loading =
+    mode === "mood"
+      ? moodLoading
+      : mode === "search"
+        ? searchLoading
+        : mode === "discover"
+          ? discoverLoading
+          : false;
+  const error =
+    mode === "mood"
+      ? moodError
+      : mode === "search"
+        ? searchError
+        : mode === "discover"
+          ? discoverError
+          : null;
+  // Mood results aren't paginated in v1 - the query is a one-shot LLM
+  // interpretation, not a stable filter set to page through.
   const canLoadMore =
     mode === "discover" &&
     discoverPage < discoverTotalPages &&
@@ -275,11 +421,55 @@ export function MediaExplorer<TSortBy extends string>({
 
   return (
     <div className="flex flex-1 flex-col gap-6 px-6 py-8">
+      <div className="flex flex-col gap-2">
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            submitMood(moodInput);
+          }}
+          className="flex w-full max-w-md flex-wrap items-center gap-2"
+        >
+          <input
+            type="text"
+            value={moodInput}
+            onChange={(event) => setMoodInput(event.target.value)}
+            placeholder="Describe a mood… e.g. slow melancholic sci-fi"
+            aria-label="Mood search"
+            disabled={!moodAvailable}
+            className="min-w-0 flex-1 rounded-full border border-black/[.08] bg-transparent px-4 py-2 text-sm outline-none focus:border-foreground/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/[.145]"
+          />
+          <button
+            type="submit"
+            disabled={!moodAvailable || !moodInput.trim()}
+            className="rounded-full border border-black/[.08] px-4 py-2 text-sm font-medium transition-colors hover:border-foreground/30 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/[.145]"
+          >
+            {moodLoading ? "Thinking…" : "Search"}
+          </button>
+        </form>
+        {moodAvailable === false && (
+          <p className="text-xs text-foreground/50">Mood search — coming soon</p>
+        )}
+        {mode === "mood" && !moodLoading && (
+          <div className="flex flex-wrap items-center gap-2 text-xs text-foreground/60">
+            {moodInterpretation && (
+              <span>
+                Interpreted as:{" "}
+                {[...moodInterpretation.genreNames, ...moodInterpretation.keywordTerms].join(
+                  ", "
+                ) || "no specific filters"}
+              </span>
+            )}
+            <button type="button" onClick={clearMood} className="underline">
+              Clear
+            </button>
+          </div>
+        )}
+      </div>
       <div className="flex flex-wrap items-center gap-3">
         <input
           type="search"
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => updateQuery(event.target.value)}
           placeholder={searchPlaceholder}
           aria-label={searchPlaceholder.replace("…", "")}
           className="w-full max-w-md rounded-full border border-black/[.08] bg-transparent px-4 py-2 text-sm outline-none focus:border-foreground/40 dark:border-white/[.145]"
@@ -295,7 +485,7 @@ export function MediaExplorer<TSortBy extends string>({
               Sort by
               <select
                 value={sortBy}
-                onChange={(event) => setSortBy(event.target.value as TSortBy)}
+                onChange={(event) => updateSortBy(event.target.value as TSortBy)}
                 className="rounded-md border border-black/[.08] bg-transparent px-2 py-1 text-foreground outline-none focus:border-foreground/40 dark:border-white/[.145]"
               >
                 {sortOptions.map((option) => (
@@ -313,7 +503,7 @@ export function MediaExplorer<TSortBy extends string>({
               Min IMDb
               <select
                 value={minImdb}
-                onChange={(event) => setMinImdb(event.target.value)}
+                onChange={(event) => updateMinImdb(event.target.value)}
                 className="rounded-md border border-black/[.08] bg-transparent px-2 py-1 text-foreground outline-none focus:border-foreground/40 dark:border-white/[.145]"
               >
                 {MIN_IMDB_OPTIONS.map((value) => (
@@ -331,7 +521,7 @@ export function MediaExplorer<TSortBy extends string>({
               Min RT
               <select
                 value={minRt}
-                onChange={(event) => setMinRt(event.target.value)}
+                onChange={(event) => updateMinRt(event.target.value)}
                 className="rounded-md border border-black/[.08] bg-transparent px-2 py-1 text-foreground outline-none focus:border-foreground/40 dark:border-white/[.145]"
               >
                 {MIN_RT_OPTIONS.map((value) => (
