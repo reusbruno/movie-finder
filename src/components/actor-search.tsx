@@ -18,12 +18,18 @@ export function ActorSearch({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // Guards against a stale (superseded but not-yet-settled) request applying
+  // its result/loading state after a newer request has started - abort()
+  // alone doesn't prevent an in-flight request's `finally` from still
+  // running after it's been superseded. See media-explorer.tsx.
+  const requestIdRef = useRef(0);
 
   const trimmedQuery = query.trim();
 
   useEffect(() => {
     if (trimmedQuery === "") {
       abortRef.current?.abort();
+      requestIdRef.current += 1;
       return;
     }
 
@@ -31,6 +37,7 @@ export function ActorSearch({
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
+      const requestId = ++requestIdRef.current;
 
       setLoading(true);
       setError(null);
@@ -42,16 +49,21 @@ export function ActorSearch({
         );
         const data = await response.json();
 
+        if (requestId !== requestIdRef.current) return;
+
         if (!response.ok) {
           throw new Error(data.error ?? "Failed to search actors");
         }
 
         setSearchResults(data.results);
       } catch (err) {
+        if (requestId !== requestIdRef.current) return;
         if (err instanceof DOMException && err.name === "AbortError") return;
         setError(err instanceof Error ? err.message : "Failed to search actors");
       } finally {
-        setLoading(false);
+        if (requestId === requestIdRef.current) {
+          setLoading(false);
+        }
       }
     }, DEBOUNCE_MS);
 
