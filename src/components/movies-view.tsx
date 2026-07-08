@@ -35,7 +35,7 @@ export function MoviesView({
             aria-current={tab === id ? "page" : undefined}
             className={`rounded-t-md px-3 py-2 text-sm font-medium transition-colors ${
               tab === id
-                ? "border-b-2 border-foreground text-foreground"
+                ? "border-b-2 border-accent text-accent"
                 : "text-foreground/60 hover:text-foreground"
             }`}
           >

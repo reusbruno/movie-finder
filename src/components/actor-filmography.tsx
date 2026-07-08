@@ -56,7 +56,7 @@ export function ActorFilmography({
           onToggle={toggleGenre}
         />
         <div className="flex items-center gap-3 text-sm">
-          <label className="flex items-center gap-1.5">
+          <label className="flex items-center gap-2">
             From
             <input
               type="number"
@@ -64,10 +64,10 @@ export function ActorFilmography({
               placeholder="Year"
               value={fromYear}
               onChange={(event) => setFromYear(event.target.value)}
-              className="w-20 rounded-md border border-black/[.08] bg-transparent px-2 py-1 dark:border-white/[.145]"
+              className="w-20 rounded-md border border-black/[.08] bg-transparent px-2 py-1 outline-none focus:border-foreground/40 dark:border-white/[.145]"
             />
           </label>
-          <label className="flex items-center gap-1.5">
+          <label className="flex items-center gap-2">
             To
             <input
               type="number"
@@ -75,7 +75,7 @@ export function ActorFilmography({
               placeholder="Year"
               value={toYear}
               onChange={(event) => setToYear(event.target.value)}
-              className="w-20 rounded-md border border-black/[.08] bg-transparent px-2 py-1 dark:border-white/[.145]"
+              className="w-20 rounded-md border border-black/[.08] bg-transparent px-2 py-1 outline-none focus:border-foreground/40 dark:border-white/[.145]"
             />
           </label>
         </div>

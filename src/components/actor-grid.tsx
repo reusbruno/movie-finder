@@ -1,5 +1,6 @@
 import type { TMDBPerson } from "@/lib/tmdb";
 import { ActorCard } from "@/components/actor-card";
+import { gridItemVisibilityClass } from "@/lib/grid-visibility";
 
 export function ActorGrid({ people }: { people: TMDBPerson[] }) {
   if (people.length === 0) {
@@ -9,9 +10,14 @@ export function ActorGrid({ people }: { people: TMDBPerson[] }) {
   }
 
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-      {people.map((person) => (
-        <ActorCard key={person.id} person={person} />
+    <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-8">
+      {people.map((person, index) => (
+        <div
+          key={person.id}
+          className={gridItemVisibilityClass(index, people.length)}
+        >
+          <ActorCard person={person} />
+        </div>
       ))}
     </div>
   );

@@ -62,9 +62,17 @@ function getRatings(mediaType: MediaType, tmdbId: number): Promise<MovieRatings>
   const key = `${mediaType}:${tmdbId}`;
   let cached = ratingsCache.get(key);
   if (!cached) {
+    // Ratings are a nice-to-have enrichment, never the reason a page should
+    // fail to render - any failure (rate limit, network error, whatever)
+    // degrades to "no ratings available" for this title, same as the
+    // existing null-handling for a missing RT score. The cache entry is
+    // still cleared on failure so a transient error doesn't get stuck
+    // forever; logged so a real, ongoing problem (e.g. a spent OMDb quota)
+    // is actually visible instead of silently invisible everywhere.
     cached = fetchRatings(mediaType, tmdbId).catch((error: unknown) => {
       ratingsCache.delete(key);
-      throw error;
+      console.error(`Ratings fetch failed for ${key}, degrading to no ratings:`, error);
+      return EMPTY_RATINGS;
     });
     ratingsCache.set(key, cached);
   }

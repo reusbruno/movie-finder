@@ -1,5 +1,6 @@
 import type { TMDBCastCredit } from "@/lib/tmdb";
 import { FilmographyCard } from "@/components/filmography-card";
+import { gridItemVisibilityClass } from "@/lib/grid-visibility";
 
 export function FilmographyGrid({ credits }: { credits: TMDBCastCredit[] }) {
   if (credits.length === 0) {
@@ -11,9 +12,14 @@ export function FilmographyGrid({ credits }: { credits: TMDBCastCredit[] }) {
   }
 
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-      {credits.map((credit) => (
-        <FilmographyCard key={credit.credit_id} credit={credit} />
+    <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-8">
+      {credits.map((credit, index) => (
+        <div
+          key={credit.credit_id}
+          className={gridItemVisibilityClass(index, credits.length)}
+        >
+          <FilmographyCard credit={credit} />
+        </div>
       ))}
     </div>
   );

@@ -3,14 +3,28 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --accent: #d4a017;
+  --accent-foreground: #171717;
   color-scheme: light dark;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-bebas-neue);
+
+  /* Explicit 5-size type scale: xs 12 / sm 14 / base 16 (Tailwind's
+     defaults already match) / lg 20 (section headings) / xl 32 (page
+     h1s). Every text size in the app maps to exactly one of these five
+     - no other scale step or arbitrary text-[Npx] value should appear. */
+  --text-lg: 1.25rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl: 2rem;
+  --text-xl--line-height: 2.25rem;
 }
 
 @media (prefers-color-scheme: dark) {

@@ -47,8 +47,13 @@ async function omdbFetch(
   const response = await fetch(url);
 
   if (!response.ok) {
+    // OMDb returns a JSON body even on 401 (e.g. {"Response":"False",
+    // "Error":"Request limit reached!"} for the free-tier daily cap) -
+    // capture it so failures are actually diagnosable instead of just a
+    // bare status code.
+    const body = await response.text().catch(() => "");
     throw new OMDBError(
-      `OMDb request failed: ${response.status} ${response.statusText}`,
+      `OMDb request failed: ${response.status} ${response.statusText}${body ? ` - ${body}` : ""}`,
       response.status
     );
   }

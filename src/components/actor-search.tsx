@@ -76,7 +76,7 @@ export function ActorSearch({
         className="w-full max-w-md rounded-full border border-black/[.08] bg-transparent px-4 py-2 text-sm outline-none focus:border-foreground/40 dark:border-white/[.145]"
       />
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold tracking-tight">{heading}</h2>
+        <h2 className="font-display text-lg tracking-wide">{heading}</h2>
         {showLoading && <span className="text-sm text-foreground/60">Loading…</span>}
       </div>
       {showError ? (

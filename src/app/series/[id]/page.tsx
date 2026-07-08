@@ -74,10 +74,10 @@ export default async function SeriesDetailPage({
           )}
         </div>
         <div className="flex flex-col gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="font-display text-xl tracking-wide">
             {details.title}
             {year && (
-              <span className="ml-2 font-normal text-foreground/60">
+              <span className="ml-2 text-lg text-foreground/60">
                 ({year})
               </span>
             )}
@@ -105,13 +105,13 @@ export default async function SeriesDetailPage({
 
       {topCast.length > 0 && (
         <div className="flex flex-col gap-4">
-          <h2 className="text-lg font-semibold tracking-tight">Cast</h2>
+          <h2 className="font-display text-lg tracking-wide">Cast</h2>
           <CastList cast={topCast} />
         </div>
       )}
 
       <div className="flex flex-col gap-4">
-        <h2 className="text-lg font-semibold tracking-tight">
+        <h2 className="font-display text-lg tracking-wide">
           More like this
         </h2>
         <MovieGrid movies={recommendationsWithRatings} basePath="series" />

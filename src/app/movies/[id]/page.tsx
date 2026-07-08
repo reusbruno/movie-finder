@@ -6,15 +6,32 @@ import {
   getMovieRecommendations,
   TMDBError,
 } from "@/lib/tmdb";
-import { getMovieRatingsByImdbId } from "@/lib/omdb";
+import { getMovieRatingsByImdbId, type MovieRatings } from "@/lib/omdb";
 import { enrichMoviesWithRatings } from "@/lib/ratings";
 import { MovieGrid } from "@/components/movie-grid";
 import { ScoreBadges } from "@/components/score-badges";
 import { CastList } from "@/components/cast-list";
 
 const MAX_CAST_MEMBERS = 12;
+const NO_RATINGS: MovieRatings = { imdbRating: null, rottenTomatoesScore: null };
 
 const POSTER_BASE_URL = "https://image.tmdb.org/t/p/w342";
+
+// Ratings are an enrichment, never a reason this page should fail to
+// render - any failure (rate limit, network error, etc.) degrades to "no
+// ratings available" rather than throwing, same as ratings.ts's resilience
+// for the grid. Called directly with the already-known imdb_id (not via
+// ratings.ts's getMovieRatings) to avoid a redundant external_ids lookup,
+// since TMDB's movie details response already includes it.
+async function fetchOwnRatings(imdbId: string | null): Promise<MovieRatings> {
+  if (!imdbId) return NO_RATINGS;
+  try {
+    return await getMovieRatingsByImdbId(imdbId);
+  } catch (error) {
+    console.error(`Ratings fetch failed for movie imdb:${imdbId}, degrading to no ratings:`, error);
+    return NO_RATINGS;
+  }
+}
 
 export default async function MovieDetailPage({
   params,
@@ -40,9 +57,7 @@ export default async function MovieDetailPage({
 
   const [recommendations, ratings, credits] = await Promise.all([
     getMovieRecommendations(movieId),
-    details.imdb_id
-      ? getMovieRatingsByImdbId(details.imdb_id)
-      : Promise.resolve({ imdbRating: null, rottenTomatoesScore: null }),
+    fetchOwnRatings(details.imdb_id),
     getMovieCredits(movieId),
   ]);
   const recommendationsWithRatings = await enrichMoviesWithRatings(
@@ -77,10 +92,10 @@ export default async function MovieDetailPage({
           )}
         </div>
         <div className="flex flex-col gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="font-display text-xl tracking-wide">
             {details.title}
             {year && (
-              <span className="ml-2 font-normal text-foreground/60">
+              <span className="ml-2 text-lg text-foreground/60">
                 ({year})
               </span>
             )}
@@ -107,13 +122,13 @@ export default async function MovieDetailPage({
 
       {topCast.length > 0 && (
         <div className="flex flex-col gap-4">
-          <h2 className="text-lg font-semibold tracking-tight">Cast</h2>
+          <h2 className="font-display text-lg tracking-wide">Cast</h2>
           <CastList cast={topCast} />
         </div>
       )}
 
       <div className="flex flex-col gap-4">
-        <h2 className="text-lg font-semibold tracking-tight">
+        <h2 className="font-display text-lg tracking-wide">
           More like this
         </h2>
         <MovieGrid movies={recommendationsWithRatings} />

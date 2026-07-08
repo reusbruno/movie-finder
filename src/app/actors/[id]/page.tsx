@@ -77,7 +77,7 @@ export default async function ActorDetailPage({
           )}
         </div>
         <div className="flex flex-col gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="font-display text-xl tracking-wide">
             {details.name}
           </h1>
           <p className="max-w-2xl text-sm leading-relaxed">
@@ -87,7 +87,7 @@ export default async function ActorDetailPage({
       </div>
 
       <div className="flex flex-col gap-4">
-        <h2 className="text-lg font-semibold tracking-tight">Filmography</h2>
+        <h2 className="font-display text-lg tracking-wide">Filmography</h2>
         <ActorFilmography credits={combinedCredits} genres={combinedGenres} />
       </div>
     </div>

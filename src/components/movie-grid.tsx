@@ -1,5 +1,6 @@
 import type { MovieWithRatings } from "@/lib/ratings";
 import { MovieCard } from "@/components/movie-card";
+import { gridItemVisibilityClass } from "@/lib/grid-visibility";
 
 export function MovieGrid({
   movies,
@@ -15,9 +16,14 @@ export function MovieGrid({
   }
 
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-      {movies.map((movie) => (
-        <MovieCard key={movie.id} movie={movie} basePath={basePath} />
+    <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-8">
+      {movies.map((movie, index) => (
+        <div
+          key={movie.id}
+          className={gridItemVisibilityClass(index, movies.length)}
+        >
+          <MovieCard movie={movie} basePath={basePath} />
+        </div>
       ))}
     </div>
   );

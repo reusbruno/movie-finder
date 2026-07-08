@@ -8,7 +8,7 @@ export function ScoreBadges({
   rtScore: number | null;
 }) {
   return (
-    <span className="inline-flex flex-wrap items-center gap-x-1.5">
+    <span className="inline-flex flex-wrap items-center gap-x-2">
       <span>TMDB {tmdbScore.toFixed(1)}</span>
       <span aria-hidden>·</span>
       <span>IMDb {imdbRating !== null ? imdbRating.toFixed(1) : "—"}</span>

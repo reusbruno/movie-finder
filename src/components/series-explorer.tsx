@@ -9,6 +9,7 @@ import {
 import type { MovieWithRatings } from "@/lib/ratings";
 import { MovieGrid } from "@/components/movie-grid";
 import { GenreFilter } from "@/components/genre-filter";
+import { FilterPanel } from "@/components/filter-panel";
 
 const SEARCH_DEBOUNCE_MS = 400;
 
@@ -245,89 +246,95 @@ export function SeriesExplorer({
     discoverPage < discoverTotalPages &&
     discoverPage < TMDB_MAX_DISCOVER_PAGE;
 
+  const activeFilterCount =
+    (selectedGenres.length > 0 ? 1 : 0) +
+    (sortBy !== DEFAULT_SORT ? 1 : 0) +
+    (minImdb ? 1 : 0) +
+    (minRt ? 1 : 0);
+
   return (
     <div className="flex flex-1 flex-col gap-6 px-6 py-8">
-      <input
-        type="search"
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-        placeholder="Search series…"
-        aria-label="Search series"
-        className="w-full max-w-md rounded-full border border-black/[.08] bg-transparent px-4 py-2 text-sm outline-none focus:border-foreground/40 dark:border-white/[.145]"
-      />
-
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <GenreFilter
-          genres={genres}
-          selectedGenreIds={selectedGenres}
-          onToggle={toggleGenre}
+      <div className="flex flex-wrap items-center gap-3">
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search series…"
+          aria-label="Search series"
+          className="w-full max-w-md rounded-full border border-black/[.08] bg-transparent px-4 py-2 text-sm outline-none focus:border-foreground/40 dark:border-white/[.145]"
         />
-        <div className="flex flex-wrap items-center gap-4">
-          <label className="flex items-center gap-2 text-sm">
-            Sort by
-            <select
-              value={sortBy}
-              onChange={(event) => setSortBy(event.target.value as TVSortBy)}
-              className="rounded-md border border-black/[.08] bg-transparent px-2 py-1 text-foreground dark:border-white/[.145]"
-            >
-              {SORT_OPTIONS.map((option) => (
-                <option
-                  key={option.value}
-                  value={option.value}
-                  className="bg-background text-foreground"
-                >
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            Min IMDb
-            <select
-              value={minImdb}
-              onChange={(event) => setMinImdb(event.target.value)}
-              className="rounded-md border border-black/[.08] bg-transparent px-2 py-1 text-foreground dark:border-white/[.145]"
-            >
-              {MIN_IMDB_OPTIONS.map((value) => (
-                <option
-                  key={value}
-                  value={value}
-                  className="bg-background text-foreground"
-                >
-                  {value ? `${value}+` : "Any"}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            Min RT
-            <select
-              value={minRt}
-              onChange={(event) => setMinRt(event.target.value)}
-              className="rounded-md border border-black/[.08] bg-transparent px-2 py-1 text-foreground dark:border-white/[.145]"
-            >
-              {MIN_RT_OPTIONS.map((value) => (
-                <option
-                  key={value}
-                  value={value}
-                  className="bg-background text-foreground"
-                >
-                  {value ? `${value}%+` : "Any"}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+        <FilterPanel activeCount={activeFilterCount}>
+          <GenreFilter
+            genres={genres}
+            selectedGenreIds={selectedGenres}
+            onToggle={toggleGenre}
+          />
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-2 text-xs">
+              Sort by
+              <select
+                value={sortBy}
+                onChange={(event) => setSortBy(event.target.value as TVSortBy)}
+                className="rounded-md border border-black/[.08] bg-transparent px-2 py-1 text-foreground outline-none focus:border-foreground/40 dark:border-white/[.145]"
+              >
+                {SORT_OPTIONS.map((option) => (
+                  <option
+                    key={option.value}
+                    value={option.value}
+                    className="bg-background text-foreground"
+                  >
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-2 text-xs">
+              Min IMDb
+              <select
+                value={minImdb}
+                onChange={(event) => setMinImdb(event.target.value)}
+                className="rounded-md border border-black/[.08] bg-transparent px-2 py-1 text-foreground outline-none focus:border-foreground/40 dark:border-white/[.145]"
+              >
+                {MIN_IMDB_OPTIONS.map((value) => (
+                  <option
+                    key={value}
+                    value={value}
+                    className="bg-background text-foreground"
+                  >
+                    {value ? `${value}+` : "Any"}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-2 text-xs">
+              Min RT
+              <select
+                value={minRt}
+                onChange={(event) => setMinRt(event.target.value)}
+                className="rounded-md border border-black/[.08] bg-transparent px-2 py-1 text-foreground outline-none focus:border-foreground/40 dark:border-white/[.145]"
+              >
+                {MIN_RT_OPTIONS.map((value) => (
+                  <option
+                    key={value}
+                    value={value}
+                    className="bg-background text-foreground"
+                  >
+                    {value ? `${value}%+` : "Any"}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <p className="text-xs text-foreground/50">
+            Rotten Tomatoes scores are frequently unavailable for TV shows in
+            our data source, even for popular ones — a missing score
+            doesn&apos;t mean it doesn&apos;t exist elsewhere.
+          </p>
+        </FilterPanel>
       </div>
 
-      <p className="text-xs text-foreground/50">
-        Rotten Tomatoes scores are frequently unavailable for TV shows in our
-        data source, even for popular ones — a missing score doesn&apos;t
-        mean it doesn&apos;t exist elsewhere.
-      </p>
-
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold tracking-tight">{heading}</h2>
+        <h2 className="font-display text-lg tracking-wide">{heading}</h2>
         {loading && <span className="text-sm text-foreground/60">Loading…</span>}
       </div>
 
@@ -346,7 +353,7 @@ export function SeriesExplorer({
               type="button"
               onClick={loadMoreDiscover}
               disabled={discoverLoadingMore}
-              className="mx-auto rounded-full border border-black/[.08] px-5 py-2 text-sm font-medium disabled:opacity-50 dark:border-white/[.145]"
+              className="mx-auto rounded-full border border-black/[.08] px-5 py-2 text-sm font-medium transition-colors hover:border-foreground/30 hover:text-foreground disabled:opacity-50 dark:border-white/[.145]"
             >
               {discoverLoadingMore ? "Loading…" : "Load more"}
             </button>
