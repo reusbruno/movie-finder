@@ -4,6 +4,7 @@ import {
   type TMDBMovie,
 } from "@/lib/tmdb";
 import { getMovieRatingsByImdbId, type MovieRatings } from "@/lib/omdb";
+import { getRottenTomatoesScore } from "@/lib/mdblist";
 
 const EMPTY_RATINGS: MovieRatings = {
   imdbRating: null,
@@ -31,7 +32,30 @@ async function fetchRatings(
   if (!externalIds.imdb_id) {
     return EMPTY_RATINGS;
   }
-  return getMovieRatingsByImdbId(externalIds.imdb_id);
+
+  const omdbRatings = await getMovieRatingsByImdbId(externalIds.imdb_id);
+
+  if (omdbRatings.rottenTomatoesScore !== null) {
+    return omdbRatings;
+  }
+
+  // OMDb has no RT score for this title (common for TV) - try MDBList as
+  // a fallback. Best-effort only: any failure here (missing key, network
+  // error, title not in MDBList either) just keeps OMDb's null result
+  // rather than breaking the whole rating fetch.
+  try {
+    const fallbackScore = await getRottenTomatoesScore(
+      externalIds.imdb_id,
+      mediaType
+    );
+    if (fallbackScore !== null) {
+      return { ...omdbRatings, rottenTomatoesScore: fallbackScore };
+    }
+  } catch {
+    // swallow - fallback is advisory only
+  }
+
+  return omdbRatings;
 }
 
 function getRatings(mediaType: MediaType, tmdbId: number): Promise<MovieRatings> {
