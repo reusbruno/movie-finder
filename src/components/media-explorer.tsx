@@ -6,6 +6,7 @@ import type { MovieWithRatings } from "@/lib/ratings";
 import { MovieGrid } from "@/components/movie-grid";
 import { GenreFilter } from "@/components/genre-filter";
 import { FilterPanel } from "@/components/filter-panel";
+import { TitlePicker, type PickedTitle } from "@/components/title-picker";
 
 const SEARCH_DEBOUNCE_MS = 400;
 const MIN_IMDB_OPTIONS = ["", "6", "7", "8", "9"] as const;
@@ -22,6 +23,7 @@ export interface MediaExplorerConfig<TSortBy extends string> {
   searchEndpoint: string;
   discoverEndpoint: string;
   moodSearchEndpoint: string;
+  vibeBlendEndpoint: string;
   searchPlaceholder: string;
   sortOptions: { value: TSortBy; label: string }[];
   defaultSort: TSortBy;
@@ -46,6 +48,7 @@ export function MediaExplorer<TSortBy extends string>({
     searchEndpoint,
     discoverEndpoint,
     moodSearchEndpoint,
+    vibeBlendEndpoint,
     searchPlaceholder,
     sortOptions,
     defaultSort,
@@ -73,6 +76,22 @@ export function MediaExplorer<TSortBy extends string>({
   const [moodError, setMoodError] = useState<string | null>(null);
   const moodAbortRef = useRef<AbortController | null>(null);
   const moodRequestIdRef = useRef(0);
+
+  const [blendTitleA, setBlendTitleA] = useState<PickedTitle | null>(null);
+  const [blendTitleB, setBlendTitleB] = useState<PickedTitle | null>(null);
+  // Set once a blend has actually been submitted - distinct from
+  // blendTitleA/B (which track the picker selections) so picking a title
+  // doesn't itself trigger "blend" mode before the Blend button is pressed.
+  const [blendActive, setBlendActive] = useState(false);
+  const [blendResults, setBlendResults] = useState<MovieWithRatings[] | null>(null);
+  const [blendCaption, setBlendCaption] = useState<{
+    titleA: string;
+    titleB: string;
+  } | null>(null);
+  const [blendLoading, setBlendLoading] = useState(false);
+  const [blendError, setBlendError] = useState<string | null>(null);
+  const blendAbortRef = useRef<AbortController | null>(null);
+  const blendRequestIdRef = useRef(0);
 
   const [searchResults, setSearchResults] = useState<MovieWithRatings[] | null>(
     null
@@ -104,16 +123,20 @@ export function MediaExplorer<TSortBy extends string>({
     minImdb !== "" ||
     minRt !== "";
 
-  // Mood search is an explicit, deliberate action (submit, not live-typing),
-  // so it takes priority over the passive search/filter modes until cleared.
-  const mode: "mood" | "search" | "discover" | "popular" =
-    moodQuery !== ""
-      ? "mood"
-      : trimmedQuery !== ""
-        ? "search"
-        : filtersActive
-          ? "discover"
-          : "popular";
+  // Blend and mood search are both explicit, deliberate actions (submit, not
+  // live-typing), so they take priority over the passive search/filter
+  // modes until cleared. They're mutually exclusive with each other too -
+  // submitting one clears the other.
+  const mode: "blend" | "mood" | "search" | "discover" | "popular" =
+    blendActive
+      ? "blend"
+      : moodQuery !== ""
+        ? "mood"
+        : trimmedQuery !== ""
+          ? "search"
+          : filtersActive
+            ? "discover"
+            : "popular";
 
   function clearMood() {
     moodAbortRef.current?.abort();
@@ -125,13 +148,78 @@ export function MediaExplorer<TSortBy extends string>({
     setMoodLoading(false);
   }
 
+  function clearBlend() {
+    blendAbortRef.current?.abort();
+    blendRequestIdRef.current += 1;
+    setBlendActive(false);
+    setBlendTitleA(null);
+    setBlendTitleB(null);
+    setBlendResults(null);
+    setBlendCaption(null);
+    setBlendError(null);
+    setBlendLoading(false);
+  }
+
+  async function submitBlend() {
+    if (!blendTitleA || !blendTitleB || blendTitleA.id === blendTitleB.id) return;
+
+    blendAbortRef.current?.abort();
+    const controller = new AbortController();
+    blendAbortRef.current = controller;
+    const requestId = ++blendRequestIdRef.current;
+
+    if (moodQuery) clearMood();
+    setQuery("");
+    setSelectedGenres([]);
+    setSortBy(defaultSort);
+    setMinImdb("");
+    setMinRt("");
+    setBlendActive(true);
+    setBlendLoading(true);
+    setBlendError(null);
+
+    try {
+      const params = new URLSearchParams({
+        a: String(blendTitleA.id),
+        b: String(blendTitleB.id),
+      });
+      const response = await fetch(`${vibeBlendEndpoint}?${params.toString()}`, {
+        signal: controller.signal,
+      });
+      const data = await response.json();
+
+      if (requestId !== blendRequestIdRef.current) return;
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Failed to blend titles");
+      }
+
+      setBlendResults(data.results);
+      setBlendCaption(
+        data.titleA && data.titleB
+          ? { titleA: data.titleA.title, titleB: data.titleB.title }
+          : null
+      );
+    } catch (err) {
+      if (requestId !== blendRequestIdRef.current) return;
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      setBlendError(err instanceof Error ? err.message : "Failed to blend titles");
+    } finally {
+      if (requestId === blendRequestIdRef.current) {
+        setBlendLoading(false);
+      }
+    }
+  }
+
   function updateQuery(value: string) {
     if (moodQuery) clearMood();
+    if (blendActive) clearBlend();
     setQuery(value);
   }
 
   function toggleGenre(id: number) {
     if (moodQuery) clearMood();
+    if (blendActive) clearBlend();
     setSelectedGenres((prev) =>
       prev.includes(id) ? prev.filter((genreId) => genreId !== id) : [...prev, id]
     );
@@ -139,16 +227,19 @@ export function MediaExplorer<TSortBy extends string>({
 
   function updateSortBy(value: TSortBy) {
     if (moodQuery) clearMood();
+    if (blendActive) clearBlend();
     setSortBy(value);
   }
 
   function updateMinImdb(value: string) {
     if (moodQuery) clearMood();
+    if (blendActive) clearBlend();
     setMinImdb(value);
   }
 
   function updateMinRt(value: string) {
     if (moodQuery) clearMood();
+    if (blendActive) clearBlend();
     setMinRt(value);
   }
 
@@ -178,6 +269,7 @@ export function MediaExplorer<TSortBy extends string>({
     moodAbortRef.current = controller;
     const requestId = ++moodRequestIdRef.current;
 
+    if (blendActive) clearBlend();
     setQuery("");
     setSelectedGenres([]);
     setSortBy(defaultSort);
@@ -373,41 +465,52 @@ export function MediaExplorer<TSortBy extends string>({
   }
 
   const items =
-    mode === "mood"
-      ? (moodResults ?? [])
-      : mode === "search"
-        ? (searchResults ?? [])
-        : mode === "discover"
-          ? (discoverResults ?? [])
-          : initialItems;
+    mode === "blend"
+      ? (blendResults ?? [])
+      : mode === "mood"
+        ? (moodResults ?? [])
+        : mode === "search"
+          ? (searchResults ?? [])
+          : mode === "discover"
+            ? (discoverResults ?? [])
+            : initialItems;
 
   const heading =
-    mode === "mood"
-      ? `Mood: "${moodQuery}"`
-      : mode === "search"
-        ? `Results for "${trimmedQuery}"`
-        : mode === "discover"
-          ? "Filtered results"
-          : popularHeading;
+    mode === "blend"
+      ? blendCaption
+        ? `Blending: ${blendCaption.titleA} + ${blendCaption.titleB}`
+        : "Blending…"
+      : mode === "mood"
+        ? `Mood: "${moodQuery}"`
+        : mode === "search"
+          ? `Results for "${trimmedQuery}"`
+          : mode === "discover"
+            ? "Filtered results"
+            : popularHeading;
 
   const loading =
-    mode === "mood"
-      ? moodLoading
-      : mode === "search"
-        ? searchLoading
-        : mode === "discover"
-          ? discoverLoading
-          : false;
+    mode === "blend"
+      ? blendLoading
+      : mode === "mood"
+        ? moodLoading
+        : mode === "search"
+          ? searchLoading
+          : mode === "discover"
+            ? discoverLoading
+            : false;
   const error =
-    mode === "mood"
-      ? moodError
-      : mode === "search"
-        ? searchError
-        : mode === "discover"
-          ? discoverError
-          : null;
-  // Mood results aren't paginated in v1 - the query is a one-shot LLM
-  // interpretation, not a stable filter set to page through.
+    mode === "blend"
+      ? blendError
+      : mode === "mood"
+        ? moodError
+        : mode === "search"
+          ? searchError
+          : mode === "discover"
+            ? discoverError
+            : null;
+  // Blend and mood results aren't paginated in v1 - both are one-shot
+  // queries against a fixed candidate pool, not a stable filter set to page
+  // through.
   const canLoadMore =
     mode === "discover" &&
     discoverPage < discoverTotalPages &&
@@ -460,6 +563,45 @@ export function MediaExplorer<TSortBy extends string>({
               </span>
             )}
             <button type="button" onClick={clearMood} className="underline">
+              Clear
+            </button>
+          </div>
+        )}
+      </div>
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <TitlePicker
+            searchEndpoint={searchEndpoint}
+            placeholder="First title…"
+            selected={blendTitleA}
+            onSelect={setBlendTitleA}
+            onClear={() => setBlendTitleA(null)}
+          />
+          <span className="text-sm text-foreground/50">+</span>
+          <TitlePicker
+            searchEndpoint={searchEndpoint}
+            placeholder="Second title…"
+            selected={blendTitleB}
+            onSelect={setBlendTitleB}
+            onClear={() => setBlendTitleB(null)}
+          />
+          <button
+            type="button"
+            onClick={submitBlend}
+            disabled={
+              !blendTitleA || !blendTitleB || blendTitleA.id === blendTitleB.id
+            }
+            className="rounded-full border border-black/[.08] px-4 py-2 text-sm font-medium transition-colors hover:border-foreground/30 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/[.145]"
+          >
+            {blendLoading ? "Blending…" : "Blend"}
+          </button>
+        </div>
+        {blendTitleA && blendTitleB && blendTitleA.id === blendTitleB.id && (
+          <p className="text-xs text-foreground/50">Pick two different titles to blend</p>
+        )}
+        {mode === "blend" && !blendLoading && (
+          <div className="flex flex-wrap items-center gap-2 text-xs text-foreground/60">
+            <button type="button" onClick={clearBlend} className="underline">
               Clear
             </button>
           </div>

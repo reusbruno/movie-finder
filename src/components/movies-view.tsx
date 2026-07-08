@@ -18,6 +18,7 @@ const MOVIES_CONFIG: MediaExplorerConfig<MovieSortBy> = {
   searchEndpoint: "/api/movies/search",
   discoverEndpoint: "/api/movies/discover",
   moodSearchEndpoint: "/api/movies/mood-search",
+  vibeBlendEndpoint: "/api/movies/vibe-blend",
   searchPlaceholder: "Search movies…",
   sortOptions: [
     { value: "popularity.desc", label: "Popularity" },

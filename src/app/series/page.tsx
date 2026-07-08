@@ -10,6 +10,7 @@ const SERIES_CONFIG: MediaExplorerConfig<TVSortBy> = {
   searchEndpoint: "/api/tv/search",
   discoverEndpoint: "/api/tv/discover",
   moodSearchEndpoint: "/api/tv/mood-search",
+  vibeBlendEndpoint: "/api/tv/vibe-blend",
   searchPlaceholder: "Search series…",
   sortOptions: [
     { value: "popularity.desc", label: "Popularity" },
