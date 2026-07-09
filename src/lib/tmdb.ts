@@ -548,6 +548,34 @@ export function getTVCredits(id: number): Promise<TMDBMovieCredits> {
   return tmdbFetch<TMDBMovieCredits>(`/tv/${id}/credits`);
 }
 
+export interface TMDBWatchProvider {
+  provider_id: number;
+  provider_name: string;
+  logo_path: string;
+  display_priority: number;
+}
+
+export interface TMDBWatchProvidersRegion {
+  link: string;
+  flatrate?: TMDBWatchProvider[];
+  rent?: TMDBWatchProvider[];
+  buy?: TMDBWatchProvider[];
+}
+
+export interface TMDBWatchProvidersResponse {
+  id: number;
+  // Keyed by ISO 3166-1 region code (e.g. "US") - TMDB returns every region
+  // it has data for in one response, not just one you ask for.
+  results: Record<string, TMDBWatchProvidersRegion>;
+}
+
+export function getWatchProviders(
+  mediaType: "movie" | "tv",
+  id: number
+): Promise<TMDBWatchProvidersResponse> {
+  return tmdbFetch<TMDBWatchProvidersResponse>(`/${mediaType}/${id}/watch/providers`);
+}
+
 interface RawTMDBTVCastCredit extends RawTMDBTVShow {
   character: string;
   credit_id: string;

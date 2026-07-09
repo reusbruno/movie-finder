@@ -9,11 +9,13 @@ import {
 } from "@/lib/tmdb";
 import { enrichTVWithRatings, getTVRatings } from "@/lib/ratings";
 import { getTVKeywordList } from "@/lib/keywords";
+import { getTVWatchProviders } from "@/lib/watch-providers";
 import { attachMatchExplanations, explainSingleRefMatch } from "@/lib/match-explanation";
 import { isAnthropicAvailable } from "@/lib/anthropic-client";
 import { MovieGrid } from "@/components/movie-grid";
 import { ScoreBadges } from "@/components/score-badges";
 import { CastList } from "@/components/cast-list";
+import { WatchProviders } from "@/components/watch-providers";
 
 const MAX_CAST_MEMBERS = 12;
 // See src/app/movies/[id]/page.tsx - same rationale: caps OMDb/MDBList/TMDB
@@ -42,6 +44,7 @@ export default async function SeriesDetailPage({
   const ratingsPromise = getTVRatings(tvId);
   const creditsPromise = getTVCredits(tvId);
   const ownKeywordsPromise = getTVKeywordList(tvId);
+  const watchProvidersPromise = getTVWatchProviders(tvId);
   // See src/app/movies/[id]/page.tsx - a bad id 404s on every endpoint, so
   // pre-empt a false "unhandled rejection" if these settle before
   // getTVDetails below; the real error is still observed via Promise.all.
@@ -49,6 +52,7 @@ export default async function SeriesDetailPage({
   ratingsPromise.catch(() => {});
   creditsPromise.catch(() => {});
   ownKeywordsPromise.catch(() => {});
+  watchProvidersPromise.catch(() => {});
 
   let details;
   try {
@@ -60,11 +64,12 @@ export default async function SeriesDetailPage({
     throw error;
   }
 
-  const [recommendations, ratings, credits, ownKeywords] = await Promise.all([
+  const [recommendations, ratings, credits, ownKeywords, watchProviders] = await Promise.all([
     recommendationsPromise,
     ratingsPromise,
     creditsPromise,
     ownKeywordsPromise,
+    watchProvidersPromise,
   ]);
   const genreNames = new Map(details.genres.map((genre) => [genre.id, genre.name]));
   const keywordNames = new Map(ownKeywords.map((keyword) => [keyword.id, keyword.name]));
@@ -137,6 +142,8 @@ export default async function SeriesDetailPage({
           </p>
         </div>
       </div>
+
+      <WatchProviders region={watchProviders} />
 
       {topCast.length > 0 && (
         <div className="flex flex-col gap-4">

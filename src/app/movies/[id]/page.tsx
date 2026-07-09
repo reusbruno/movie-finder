@@ -9,11 +9,13 @@ import {
 } from "@/lib/tmdb";
 import { enrichMoviesWithRatings, getMovieRatings } from "@/lib/ratings";
 import { getMovieKeywordList } from "@/lib/keywords";
+import { getMovieWatchProviders } from "@/lib/watch-providers";
 import { attachMatchExplanations, explainSingleRefMatch } from "@/lib/match-explanation";
 import { isAnthropicAvailable } from "@/lib/anthropic-client";
 import { MovieGrid } from "@/components/movie-grid";
 import { ScoreBadges } from "@/components/score-badges";
 import { CastList } from "@/components/cast-list";
+import { WatchProviders } from "@/components/watch-providers";
 
 const MAX_CAST_MEMBERS = 12;
 // Caps how many "More like this" recommendations get rating-enriched.
@@ -50,6 +52,7 @@ export default async function MovieDetailPage({
   // below - shares the same cache blend/mood search use, so a title looked
   // up elsewhere costs nothing here.
   const ownKeywordsPromise = getMovieKeywordList(movieId);
+  const watchProvidersPromise = getMovieWatchProviders(movieId);
   // A bad id 404s on every endpoint, not just getMovieDetails - if these
   // reject while getMovieDetails is still in flight below, nothing has
   // observed them yet, which Node treats as an unhandled rejection. The
@@ -59,6 +62,7 @@ export default async function MovieDetailPage({
   ratingsPromise.catch(() => {});
   creditsPromise.catch(() => {});
   ownKeywordsPromise.catch(() => {});
+  watchProvidersPromise.catch(() => {});
 
   let details;
   try {
@@ -70,11 +74,12 @@ export default async function MovieDetailPage({
     throw error;
   }
 
-  const [recommendations, ratings, credits, ownKeywords] = await Promise.all([
+  const [recommendations, ratings, credits, ownKeywords, watchProviders] = await Promise.all([
     recommendationsPromise,
     ratingsPromise,
     creditsPromise,
     ownKeywordsPromise,
+    watchProvidersPromise,
   ]);
   const genreNames = new Map(details.genres.map((genre) => [genre.id, genre.name]));
   const keywordNames = new Map(ownKeywords.map((keyword) => [keyword.id, keyword.name]));
@@ -146,6 +151,8 @@ export default async function MovieDetailPage({
           </p>
         </div>
       </div>
+
+      <WatchProviders region={watchProviders} />
 
       {topCast.length > 0 && (
         <div className="flex flex-col gap-4">
