@@ -1,4 +1,5 @@
 import type { MovieWithMatch } from "@/lib/match-explanation";
+import type { WatchlistMediaType } from "@/lib/watchlist";
 import { MovieCard } from "@/components/movie-card";
 import { gridItemVisibilityClass } from "@/lib/grid-visibility";
 
@@ -15,7 +16,9 @@ export function MovieGrid({
   eagerFirstRow = false,
   canExplainMore = false,
 }: {
-  movies: MovieWithMatch[];
+  // Per-item mediaType is optional - only the watchlist grid mixes movies
+  // and TV in one grid and needs it; see movie-card.tsx.
+  movies: (MovieWithMatch & { mediaType?: WatchlistMediaType })[];
   basePath?: "movies" | "series";
   // Only true for a grid that's the primary above-the-fold content (the
   // popular/discover/search grid on /movies and /series). Detail-page

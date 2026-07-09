@@ -14,7 +14,15 @@ export function AppHeader() {
           KINDRED
         </span>
       </Link>
-      <ModeToggle />
+      <div className="flex items-center gap-4">
+        <Link
+          href="/watchlist"
+          className="text-sm font-medium text-foreground/70 transition-colors hover:text-foreground"
+        >
+          Watchlist
+        </Link>
+        <ModeToggle />
+      </div>
     </header>
   );
 }

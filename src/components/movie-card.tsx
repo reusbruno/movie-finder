@@ -3,8 +3,49 @@
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { Bookmark } from "lucide-react";
 import type { MovieWithMatch } from "@/lib/match-explanation";
+import { useWatchlist } from "@/lib/use-watchlist";
+import type { WatchlistMediaType } from "@/lib/watchlist";
 import { ScoreBadges } from "@/components/score-badges";
+
+function WatchlistButton({
+  id,
+  mediaType,
+  title,
+  posterPath,
+}: {
+  id: number;
+  mediaType: WatchlistMediaType;
+  title: string;
+  posterPath: string | null;
+}) {
+  const { has, add, remove } = useWatchlist();
+  const saved = has(id, mediaType);
+
+  function handleClick(event: React.MouseEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (saved) {
+      remove(id, mediaType);
+    } else {
+      add({ id, mediaType, title, posterPath });
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      aria-pressed={saved}
+      aria-label={saved ? `Remove ${title} from watchlist` : `Add ${title} to watchlist`}
+      title={saved ? "Remove from watchlist" : "Add to watchlist"}
+      className="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition-colors hover:bg-black/80"
+    >
+      <Bookmark className="h-3.5 w-3.5" fill={saved ? "currentColor" : "none"} />
+    </button>
+  );
+}
 
 const POSTER_BASE_URL = "https://image.tmdb.org/t/p/w500";
 // Matches the grid's column breakpoints (grid-cols-3 sm:4 md:6 xl:8) so the
@@ -19,7 +60,11 @@ export function MovieCard({
   eager = false,
   canExplainMore = false,
 }: {
-  movie: MovieWithMatch;
+  // mediaType is optional and only needed when a single grid mixes movies
+  // and TV (the watchlist page) - when present it overrides `basePath` for
+  // this card's link and watchlist identity; every other grid is uniformly
+  // one media type and relies on `basePath` alone, same as before.
+  movie: MovieWithMatch & { mediaType?: WatchlistMediaType };
   basePath?: "movies" | "series";
   eager?: boolean;
   // Whether the on-demand LLM elaboration is available (ANTHROPIC_API_KEY
@@ -28,6 +73,8 @@ export function MovieCard({
   canExplainMore?: boolean;
 }) {
   const year = movie.release_date ? movie.release_date.slice(0, 4) : null;
+  const mediaType: WatchlistMediaType = movie.mediaType ?? (basePath === "series" ? "tv" : "movie");
+  const cardBasePath = movie.mediaType ? (movie.mediaType === "tv" ? "series" : "movies") : basePath;
 
   const [expanded, setExpanded] = useState<string | null>(null);
   const [expanding, setExpanding] = useState(false);
@@ -66,9 +113,15 @@ export function MovieCard({
 
   return (
     <Link
-      href={`/${basePath}/${movie.id}`}
+      href={`/${cardBasePath}/${movie.id}`}
       className="group relative block aspect-[2/3] overflow-hidden rounded-lg bg-black/[.04] shadow-none transition-all duration-200 ease-out hover:z-10 hover:scale-[1.04] hover:shadow-lg hover:shadow-black/40 focus-visible:z-10 focus-visible:scale-[1.04] focus-visible:ring-2 focus-visible:ring-accent dark:bg-white/[.06]"
     >
+      <WatchlistButton
+        id={movie.id}
+        mediaType={mediaType}
+        title={movie.title}
+        posterPath={movie.poster_path}
+      />
       {movie.poster_path ? (
         <Image
           src={`${POSTER_BASE_URL}${movie.poster_path}`}
