@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { TMDB_MAX_DISCOVER_PAGE, type TMDBGenre } from "@/lib/tmdb";
 import type { MovieWithRatings } from "@/lib/ratings";
 import { MovieGrid } from "@/components/movie-grid";
@@ -115,6 +116,13 @@ export function MediaExplorer<TSortBy extends string>({
   const [discoverError, setDiscoverError] = useState<string | null>(null);
   const discoverAbortRef = useRef<AbortController | null>(null);
   const discoverRequestIdRef = useRef(0);
+
+  const router = useRouter();
+  const [surpriseLoading, setSurpriseLoading] = useState(false);
+  // Distinct from the error states above: "your filters matched nothing" is
+  // an expected, calm outcome (not a failure), so it renders as a plain
+  // note rather than the red error text a fetch failure gets.
+  const [surpriseMessage, setSurpriseMessage] = useState<string | null>(null);
 
   const trimmedQuery = query.trim();
   const filtersActive =
@@ -321,6 +329,44 @@ export function MediaExplorer<TSortBy extends string>({
       params.set("min_rt", minRt);
     }
     return params;
+  }
+
+  // Tied to the genre/sort/rating filters specifically (via the same
+  // discoverEndpoint/buildDiscoverParams the filtered browse grid uses),
+  // regardless of whatever mode (search/mood/blend) happens to be on
+  // screen right now - a stray search query shouldn't change what
+  // "respecting the active filters" means here. When no filters are set,
+  // buildDiscoverParams still resolves to the same broad
+  // sort_by=popularity.desc pool the Popular grid shows, so there's no
+  // separate "no filters" branch needed.
+  async function handleSurpriseMe() {
+    setSurpriseLoading(true);
+    setSurpriseMessage(null);
+
+    try {
+      const params = buildDiscoverParams(1);
+      const response = await fetch(`${discoverEndpoint}?${params.toString()}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error ?? `Failed to load ${itemsLabel}`);
+      }
+
+      const results: MovieWithRatings[] = data.results ?? [];
+      if (results.length === 0) {
+        setSurpriseMessage("No titles match the current filters.");
+        return;
+      }
+
+      const pick = results[Math.floor(Math.random() * results.length)];
+      router.push(`/${basePath}/${pick.id}`);
+    } catch (err) {
+      setSurpriseMessage(
+        err instanceof Error ? err.message : "Failed to pick a surprise title"
+      );
+    } finally {
+      setSurpriseLoading(false);
+    }
   }
 
   // A typed query always takes priority - fetch search results regardless
@@ -680,7 +726,18 @@ export function MediaExplorer<TSortBy extends string>({
           </div>
           {filterFootnote}
         </FilterPanel>
+        <button
+          type="button"
+          onClick={handleSurpriseMe}
+          disabled={surpriseLoading}
+          className="rounded-full border border-black/[.08] px-4 py-2 text-sm font-medium transition-colors hover:border-foreground/30 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/[.145]"
+        >
+          {surpriseLoading ? "Picking…" : "Surprise me"}
+        </button>
       </div>
+      {surpriseMessage && (
+        <p className="text-xs text-foreground/50">{surpriseMessage}</p>
+      )}
 
       <div className="flex items-center justify-between">
         <h2 className="font-display text-lg tracking-wide">{heading}</h2>
