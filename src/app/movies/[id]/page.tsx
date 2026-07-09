@@ -8,6 +8,9 @@ import {
   TMDBError,
 } from "@/lib/tmdb";
 import { enrichMoviesWithRatings, getMovieRatings } from "@/lib/ratings";
+import { getMovieKeywordList } from "@/lib/keywords";
+import { attachMatchExplanations, explainSingleRefMatch } from "@/lib/match-explanation";
+import { isAnthropicAvailable } from "@/lib/anthropic-client";
 import { MovieGrid } from "@/components/movie-grid";
 import { ScoreBadges } from "@/components/score-badges";
 import { CastList } from "@/components/cast-list";
@@ -43,6 +46,10 @@ export default async function MovieDetailPage({
   const recommendationsPromise = getMovieRecommendations(movieId);
   const ratingsPromise = getMovieRatings(movieId);
   const creditsPromise = getMovieCredits(movieId);
+  // This title's own keywords, for "why this match" on the recommendations
+  // below - shares the same cache blend/mood search use, so a title looked
+  // up elsewhere costs nothing here.
+  const ownKeywordsPromise = getMovieKeywordList(movieId);
   // A bad id 404s on every endpoint, not just getMovieDetails - if these
   // reject while getMovieDetails is still in flight below, nothing has
   // observed them yet, which Node treats as an unhandled rejection. The
@@ -51,6 +58,7 @@ export default async function MovieDetailPage({
   recommendationsPromise.catch(() => {});
   ratingsPromise.catch(() => {});
   creditsPromise.catch(() => {});
+  ownKeywordsPromise.catch(() => {});
 
   let details;
   try {
@@ -62,13 +70,23 @@ export default async function MovieDetailPage({
     throw error;
   }
 
-  const [recommendations, ratings, credits] = await Promise.all([
+  const [recommendations, ratings, credits, ownKeywords] = await Promise.all([
     recommendationsPromise,
     ratingsPromise,
     creditsPromise,
+    ownKeywordsPromise,
   ]);
+  const genreNames = new Map(details.genres.map((genre) => [genre.id, genre.name]));
+  const keywordNames = new Map(ownKeywords.map((keyword) => [keyword.id, keyword.name]));
+  const recommendationsWithExplanations = await attachMatchExplanations(
+    recommendations.results.slice(0, MAX_ENRICHED_RECOMMENDATIONS),
+    "movie",
+    genreNames,
+    keywordNames,
+    (signals) => explainSingleRefMatch(signals, details.title)
+  );
   const recommendationsWithRatings = await enrichMoviesWithRatings(
-    recommendations.results.slice(0, MAX_ENRICHED_RECOMMENDATIONS)
+    recommendationsWithExplanations
   );
   const topCast = [...credits.cast]
     .sort((a, b) => a.order - b.order)
@@ -140,7 +158,10 @@ export default async function MovieDetailPage({
         <h2 className="font-display text-lg tracking-wide">
           More like this
         </h2>
-        <MovieGrid movies={recommendationsWithRatings} />
+        <MovieGrid
+          movies={recommendationsWithRatings}
+          canExplainMore={isAnthropicAvailable()}
+        />
       </div>
     </div>
   );

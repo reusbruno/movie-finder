@@ -695,7 +695,12 @@ export function MediaExplorer<TSortBy extends string>({
             className={`transition-opacity duration-150 ${loading ? "opacity-40" : "opacity-100"}`}
             aria-busy={loading}
           >
-            <MovieGrid movies={items} basePath={basePath} eagerFirstRow />
+            <MovieGrid
+              movies={items}
+              basePath={basePath}
+              eagerFirstRow
+              canExplainMore={moodAvailable === true}
+            />
           </div>
           {canLoadMore && (
             <button

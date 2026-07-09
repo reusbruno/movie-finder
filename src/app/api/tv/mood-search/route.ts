@@ -13,6 +13,7 @@ import {
   resolveMoodFilters,
   MoodSearchError,
 } from "@/lib/mood-search";
+import { attachMatchExplanations, explainMoodMatch } from "@/lib/match-explanation";
 
 const MAX_QUERY_LENGTH = 300;
 
@@ -60,7 +61,14 @@ export async function POST(request: NextRequest) {
       sortBy,
       yearRange: resolved.yearRange,
     });
-    const enriched = await enrichTVWithRatings(results.results);
+    const withExplanations = await attachMatchExplanations(
+      results.results,
+      "tv",
+      resolved.genreNames,
+      resolved.keywordNames,
+      explainMoodMatch
+    );
+    const enriched = await enrichTVWithRatings(withExplanations);
 
     return NextResponse.json({
       ...results,

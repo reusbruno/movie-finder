@@ -3,12 +3,16 @@ import {
   discoverTV,
   getMovieDetails,
   getTVDetails,
-  getMovieKeywords,
-  getTVKeywords,
   getMovieRecommendations,
   getTVRecommendations,
   type TMDBMovie,
 } from "@/lib/tmdb";
+import { getMovieKeywordList, getTVKeywordList } from "@/lib/keywords";
+import {
+  computeBlendSignals,
+  blendSignalScore,
+  explainBlendMatch,
+} from "@/lib/match-explanation";
 
 export class VibeBlendError extends Error {
   constructor(
@@ -20,23 +24,17 @@ export class VibeBlendError extends Error {
   }
 }
 
-// A genre/keyword/recommendation-list hit that lands on BOTH seed titles is
-// worth more than one that only connects to a single title - that's the
-// literal "between two titles" signal this feature is built around.
-// Keywords outweigh genres because genres are coarse (~19 possible values)
-// while keywords are specific, so a shared keyword is stronger evidence of a
-// shared vibe than a shared genre.
-const GENRE_POINTS_ONE = 1;
-const GENRE_POINTS_BOTH = 2;
-const KEYWORD_POINTS_ONE = 2;
-const KEYWORD_POINTS_BOTH = 4;
+// Recommendation-list overlap is blend-specific (mood search and detail-page
+// recommendations don't have a second title to cross-reference against), so
+// these two weights stay local rather than living in match-explanation.ts
+// alongside the genre/keyword weights every context shares.
 const RECOMMENDATION_POINTS_ONE = 2;
 const RECOMMENDATION_POINTS_BOTH = 6;
 
 export type MediaType = "movie" | "tv";
 
 export interface BlendResult {
-  results: TMDBMovie[];
+  results: (TMDBMovie & { matchExplanation: string | null })[];
   titleA: { id: number; title: string };
   titleB: { id: number; title: string };
 }
@@ -44,37 +42,24 @@ export interface BlendResult {
 interface SeedData {
   id: number;
   title: string;
-  genreIds: Set<number>;
-  keywordIds: Set<number>;
+  genreNames: Map<number, string>;
+  keywordNames: Map<number, string>;
   recommendationIds: Set<number>;
 }
 
 async function fetchSeed(id: number, mediaType: MediaType): Promise<SeedData> {
-  if (mediaType === "movie") {
-    const [details, keywords, recommendations] = await Promise.all([
-      getMovieDetails(id),
-      getMovieKeywords(id),
-      getMovieRecommendations(id),
-    ]);
-    return {
-      id: details.id,
-      title: details.title,
-      genreIds: new Set(details.genres.map((genre) => genre.id)),
-      keywordIds: new Set(keywords.keywords.map((keyword) => keyword.id)),
-      recommendationIds: new Set(recommendations.results.map((item) => item.id)),
-    };
-  }
+  const getKeywords = mediaType === "movie" ? getMovieKeywordList : getTVKeywordList;
 
-  const [details, keywords, recommendations] = await Promise.all([
-    getTVDetails(id),
-    getTVKeywords(id),
-    getTVRecommendations(id),
-  ]);
+  const [details, keywords, recommendations] =
+    mediaType === "movie"
+      ? await Promise.all([getMovieDetails(id), getKeywords(id), getMovieRecommendations(id)])
+      : await Promise.all([getTVDetails(id), getKeywords(id), getTVRecommendations(id)]);
+
   return {
     id: details.id,
     title: details.title,
-    genreIds: new Set(details.genres.map((genre) => genre.id)),
-    keywordIds: new Set(keywords.results.map((keyword) => keyword.id)),
+    genreNames: new Map(details.genres.map((genre) => [genre.id, genre.name])),
+    keywordNames: new Map(keywords.map((keyword) => [keyword.id, keyword.name])),
     recommendationIds: new Set(recommendations.results.map((item) => item.id)),
   };
 }
@@ -84,48 +69,15 @@ async function fetchCandidateKeywordIds(
   mediaType: MediaType
 ): Promise<Set<number>> {
   try {
-    if (mediaType === "movie") {
-      const { keywords } = await getMovieKeywords(id);
-      return new Set(keywords.map((keyword) => keyword.id));
-    }
-    const { results } = await getTVKeywords(id);
-    return new Set(results.map((keyword) => keyword.id));
+    const keywords =
+      mediaType === "movie" ? await getMovieKeywordList(id) : await getTVKeywordList(id);
+    return new Set(keywords.map((keyword) => keyword.id));
   } catch {
-    // Best-effort: a failed lookup just scores that candidate on
+    // Best-effort: a failed lookup just scores/explains that candidate on
     // genres/recommendations only, same tolerance as mood search's
     // reference-title resolution.
     return new Set();
   }
-}
-
-function scoreCandidate(
-  candidate: TMDBMovie,
-  candidateKeywordIds: Set<number>,
-  seedA: SeedData,
-  seedB: SeedData
-): number {
-  let score = 0;
-
-  for (const genreId of candidate.genre_ids) {
-    const inA = seedA.genreIds.has(genreId);
-    const inB = seedB.genreIds.has(genreId);
-    if (inA && inB) score += GENRE_POINTS_BOTH;
-    else if (inA || inB) score += GENRE_POINTS_ONE;
-  }
-
-  for (const keywordId of candidateKeywordIds) {
-    const inA = seedA.keywordIds.has(keywordId);
-    const inB = seedB.keywordIds.has(keywordId);
-    if (inA && inB) score += KEYWORD_POINTS_BOTH;
-    else if (inA || inB) score += KEYWORD_POINTS_ONE;
-  }
-
-  const inRecA = seedA.recommendationIds.has(candidate.id);
-  const inRecB = seedB.recommendationIds.has(candidate.id);
-  if (inRecA && inRecB) score += RECOMMENDATION_POINTS_BOTH;
-  else if (inRecA || inRecB) score += RECOMMENDATION_POINTS_ONE;
-
-  return score;
 }
 
 export async function blendTitles(
@@ -142,8 +94,10 @@ export async function blendTitles(
     fetchSeed(idB, mediaType),
   ]);
 
-  const genreIds = [...new Set([...seedA.genreIds, ...seedB.genreIds])];
-  const keywordIds = [...new Set([...seedA.keywordIds, ...seedB.keywordIds])];
+  const genreIds = [...new Set([...seedA.genreNames.keys(), ...seedB.genreNames.keys()])];
+  const keywordIds = [
+    ...new Set([...seedA.keywordNames.keys(), ...seedB.keywordNames.keys()]),
+  ];
 
   const discover =
     mediaType === "movie"
@@ -158,17 +112,38 @@ export async function blendTitles(
     candidates.map((candidate) => fetchCandidateKeywordIds(candidate.id, mediaType))
   );
 
-  const scored = candidates.map((candidate, index) => ({
-    candidate,
-    score: scoreCandidate(candidate, candidateKeywordSets[index], seedA, seedB),
-  }));
+  const scored = candidates.map((candidate, index) => {
+    const signals = computeBlendSignals(
+      candidate.genre_ids,
+      candidateKeywordSets[index],
+      seedA.genreNames,
+      seedB.genreNames,
+      seedA.keywordNames,
+      seedB.keywordNames
+    );
+
+    const inRecA = seedA.recommendationIds.has(candidate.id);
+    const inRecB = seedB.recommendationIds.has(candidate.id);
+    const recommendationScore =
+      inRecA && inRecB
+        ? RECOMMENDATION_POINTS_BOTH
+        : inRecA || inRecB
+          ? RECOMMENDATION_POINTS_ONE
+          : 0;
+
+    return {
+      candidate,
+      score: blendSignalScore(signals) + recommendationScore,
+      matchExplanation: explainBlendMatch(signals, seedA.title, seedB.title, inRecA, inRecB),
+    };
+  });
 
   // Array.prototype.sort is stable, so equal scores keep the discover
   // response's popularity.desc order as an implicit tie-break.
   scored.sort((a, b) => b.score - a.score);
 
   return {
-    results: scored.map((entry) => entry.candidate),
+    results: scored.map((entry) => ({ ...entry.candidate, matchExplanation: entry.matchExplanation })),
     titleA: { id: seedA.id, title: seedA.title },
     titleB: { id: seedB.id, title: seedB.title },
   };

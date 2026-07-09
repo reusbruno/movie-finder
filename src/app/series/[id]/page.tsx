@@ -8,6 +8,9 @@ import {
   TMDBError,
 } from "@/lib/tmdb";
 import { enrichTVWithRatings, getTVRatings } from "@/lib/ratings";
+import { getTVKeywordList } from "@/lib/keywords";
+import { attachMatchExplanations, explainSingleRefMatch } from "@/lib/match-explanation";
+import { isAnthropicAvailable } from "@/lib/anthropic-client";
 import { MovieGrid } from "@/components/movie-grid";
 import { ScoreBadges } from "@/components/score-badges";
 import { CastList } from "@/components/cast-list";
@@ -31,17 +34,21 @@ export default async function SeriesDetailPage({
     notFound();
   }
 
-  // Started immediately, alongside getTVDetails below - none of these three
-  // depend on the details response.
+  // Started immediately, alongside getTVDetails below - none of these
+  // depend on the details response. ownKeywordsPromise feeds "why this
+  // match" on the recommendations below and shares the same cache
+  // blend/mood search use.
   const recommendationsPromise = getTVRecommendations(tvId);
   const ratingsPromise = getTVRatings(tvId);
   const creditsPromise = getTVCredits(tvId);
+  const ownKeywordsPromise = getTVKeywordList(tvId);
   // See src/app/movies/[id]/page.tsx - a bad id 404s on every endpoint, so
   // pre-empt a false "unhandled rejection" if these settle before
   // getTVDetails below; the real error is still observed via Promise.all.
   recommendationsPromise.catch(() => {});
   ratingsPromise.catch(() => {});
   creditsPromise.catch(() => {});
+  ownKeywordsPromise.catch(() => {});
 
   let details;
   try {
@@ -53,13 +60,23 @@ export default async function SeriesDetailPage({
     throw error;
   }
 
-  const [recommendations, ratings, credits] = await Promise.all([
+  const [recommendations, ratings, credits, ownKeywords] = await Promise.all([
     recommendationsPromise,
     ratingsPromise,
     creditsPromise,
+    ownKeywordsPromise,
   ]);
+  const genreNames = new Map(details.genres.map((genre) => [genre.id, genre.name]));
+  const keywordNames = new Map(ownKeywords.map((keyword) => [keyword.id, keyword.name]));
+  const recommendationsWithExplanations = await attachMatchExplanations(
+    recommendations.results.slice(0, MAX_ENRICHED_RECOMMENDATIONS),
+    "tv",
+    genreNames,
+    keywordNames,
+    (signals) => explainSingleRefMatch(signals, details.title)
+  );
   const recommendationsWithRatings = await enrichTVWithRatings(
-    recommendations.results.slice(0, MAX_ENRICHED_RECOMMENDATIONS)
+    recommendationsWithExplanations
   );
   const topCast = [...credits.cast]
     .sort((a, b) => a.order - b.order)
@@ -132,7 +149,11 @@ export default async function SeriesDetailPage({
         <h2 className="font-display text-lg tracking-wide">
           More like this
         </h2>
-        <MovieGrid movies={recommendationsWithRatings} basePath="series" />
+        <MovieGrid
+          movies={recommendationsWithRatings}
+          basePath="series"
+          canExplainMore={isAnthropicAvailable()}
+        />
       </div>
     </div>
   );

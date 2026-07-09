@@ -8,6 +8,11 @@ import {
   type TMDBGenre,
   type TMDBYearRange,
 } from "@/lib/tmdb";
+import {
+  getAnthropicClient,
+  isAnthropicAvailable,
+  AnthropicUnavailableError,
+} from "@/lib/anthropic-client";
 
 export class MoodSearchError extends Error {
   constructor(
@@ -27,20 +32,18 @@ const MAX_REFERENCE_TITLES = 3;
 const MAX_KEYWORDS_PER_REFERENCE_TITLE = 3;
 
 export function isMoodSearchAvailable(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY);
+  return isAnthropicAvailable();
 }
 
-let client: Anthropic | null = null;
-
 function getClient(): Anthropic {
-  if (!client) {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
+  try {
+    return getAnthropicClient();
+  } catch (error) {
+    if (error instanceof AnthropicUnavailableError) {
       throw new MoodSearchError("Mood search is not configured", 503);
     }
-    client = new Anthropic({ apiKey });
+    throw error;
   }
-  return client;
 }
 
 export interface MoodInterpretation {
@@ -146,6 +149,11 @@ export interface ResolvedMoodFilters {
   keywordIds: number[];
   sortBy: string;
   yearRange?: TMDBYearRange;
+  // Name maps for the resolved ids above - used to build per-candidate "why
+  // this match" explanations (see match-explanation.ts), restricted to just
+  // what the query actually resolved to, not the full TMDB catalog.
+  genreNames: Map<number, string>;
+  keywordNames: Map<number, string>;
   interpretation: {
     genreNames: string[];
     keywordTerms: string[];
@@ -162,9 +170,11 @@ export async function resolveMoodFilters(
   const genreIds = interpretation.genres
     .map((name) => genreNameToId.get(name))
     .filter((id): id is number => id !== undefined);
+  const genreNames = new Map(genreIds.map((id) => [id, genres.find((g) => g.id === id)!.name]));
 
   const keywordTerms = new Set<string>();
   const keywordIds = new Set<number>();
+  const keywordNames = new Map<number, string>();
 
   async function addKeywordTerm(term: string) {
     if (keywordTerms.has(term)) return;
@@ -173,6 +183,7 @@ export async function resolveMoodFilters(
       if (results[0]) {
         keywordTerms.add(term);
         keywordIds.add(results[0].id);
+        keywordNames.set(results[0].id, results[0].name);
       }
     } catch {
       // Best-effort: a failed keyword lookup just drops that one term.
@@ -198,6 +209,7 @@ export async function resolveMoodFilters(
           if (!keywordTerms.has(keyword.name)) {
             keywordTerms.add(keyword.name);
             keywordIds.add(keyword.id);
+            keywordNames.set(keyword.id, keyword.name);
           }
         }
       } catch {
@@ -211,6 +223,8 @@ export async function resolveMoodFilters(
     keywordIds: [...keywordIds],
     sortBy: interpretation.sortBy,
     yearRange: interpretation.yearRange,
+    genreNames,
+    keywordNames,
     interpretation: {
       genreNames: interpretation.genres.filter((name) => genreNameToId.has(name)),
       keywordTerms: [...keywordTerms],

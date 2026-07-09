@@ -1,6 +1,9 @@
+"use client";
+
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import type { MovieWithRatings } from "@/lib/ratings";
+import type { MovieWithMatch } from "@/lib/match-explanation";
 import { ScoreBadges } from "@/components/score-badges";
 
 const POSTER_BASE_URL = "https://image.tmdb.org/t/p/w500";
@@ -14,12 +17,52 @@ export function MovieCard({
   movie,
   basePath = "movies",
   eager = false,
+  canExplainMore = false,
 }: {
-  movie: MovieWithRatings;
+  movie: MovieWithMatch;
   basePath?: "movies" | "series";
   eager?: boolean;
+  // Whether the on-demand LLM elaboration is available (ANTHROPIC_API_KEY
+  // set) - gates the "Explain more" button independent of whether this
+  // particular card has a matchExplanation to expand.
+  canExplainMore?: boolean;
 }) {
   const year = movie.release_date ? movie.release_date.slice(0, 4) : null;
+
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [expanding, setExpanding] = useState(false);
+  const [expandError, setExpandError] = useState<string | null>(null);
+
+  async function handleExplainMore(event: React.MouseEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!movie.matchExplanation || expanding) return;
+
+    setExpanding(true);
+    setExpandError(null);
+
+    try {
+      const response = await fetch("/api/explain-match", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: movie.title,
+          explanation: movie.matchExplanation,
+        }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Failed to expand explanation");
+      }
+
+      setExpanded(data.text);
+    } catch (err) {
+      setExpandError(err instanceof Error ? err.message : "Failed to expand explanation");
+    } finally {
+      setExpanding(false);
+    }
+  }
 
   return (
     <Link
@@ -57,6 +100,24 @@ export function MovieCard({
                 rtScore={movie.ratings.rottenTomatoesScore}
               />
             </p>
+            {movie.matchExplanation && (
+              <div className="mt-1">
+                <p className="line-clamp-2 text-[11px] text-white/70">
+                  {expanded ?? movie.matchExplanation}
+                </p>
+                {canExplainMore && !expanded && (
+                  <button
+                    type="button"
+                    onClick={handleExplainMore}
+                    disabled={expanding}
+                    title={expandError ?? undefined}
+                    className="text-[10px] text-white/50 underline hover:text-white/80 disabled:no-underline disabled:opacity-60"
+                  >
+                    {expanding ? "Expanding…" : expandError ? "Try again" : "Explain more"}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

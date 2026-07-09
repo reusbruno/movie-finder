@@ -1,4 +1,4 @@
-import type { MovieWithRatings } from "@/lib/ratings";
+import type { MovieWithMatch } from "@/lib/match-explanation";
 import { MovieCard } from "@/components/movie-card";
 import { gridItemVisibilityClass } from "@/lib/grid-visibility";
 
@@ -13,14 +13,17 @@ export function MovieGrid({
   movies,
   basePath = "movies",
   eagerFirstRow = false,
+  canExplainMore = false,
 }: {
-  movies: MovieWithRatings[];
+  movies: MovieWithMatch[];
   basePath?: "movies" | "series";
   // Only true for a grid that's the primary above-the-fold content (the
   // popular/discover/search grid on /movies and /series). Detail-page
   // recommendation grids render below the hero and cast list, so eagerly
   // loading their images would compete with the actually-visible content.
   eagerFirstRow?: boolean;
+  // Whether the on-demand LLM elaboration is available - see movie-card.tsx.
+  canExplainMore?: boolean;
 }) {
   if (movies.length === 0) {
     return (
@@ -39,6 +42,7 @@ export function MovieGrid({
             movie={movie}
             basePath={basePath}
             eager={eagerFirstRow && index < MAX_COLUMNS}
+            canExplainMore={canExplainMore}
           />
         </div>
       ))}
