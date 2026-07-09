@@ -3,6 +3,12 @@ import { TMDBError } from "@/lib/tmdb";
 import { blendTitles, VibeBlendError } from "@/lib/vibe-blend";
 import { enrichMoviesWithRatings } from "@/lib/ratings";
 
+// blendTitles can return up to a full discover page (~20) of scored
+// candidates. Enriching all of them would fire an OMDb lookup per candidate
+// on every blend - cap to the top-ranked results (after scoring) instead,
+// same pattern as MAX_ENRICHED_RECOMMENDATIONS on the detail pages.
+const MAX_ENRICHED_BLEND_RESULTS = 10;
+
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const idA = Number(searchParams.get("a"));
@@ -17,7 +23,8 @@ export async function GET(request: NextRequest) {
 
   try {
     const blend = await blendTitles(idA, idB, "movie");
-    const enriched = await enrichMoviesWithRatings(blend.results);
+    const topResults = blend.results.slice(0, MAX_ENRICHED_BLEND_RESULTS);
+    const enriched = await enrichMoviesWithRatings(topResults);
     return NextResponse.json({
       results: enriched,
       titleA: blend.titleA,

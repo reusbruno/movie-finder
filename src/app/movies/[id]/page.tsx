@@ -7,8 +7,7 @@ import {
   getMovieRecommendations,
   TMDBError,
 } from "@/lib/tmdb";
-import { getMovieRatingsByImdbId, type MovieRatings } from "@/lib/omdb";
-import { enrichMoviesWithRatings } from "@/lib/ratings";
+import { enrichMoviesWithRatings, getMovieRatings } from "@/lib/ratings";
 import { MovieGrid } from "@/components/movie-grid";
 import { ScoreBadges } from "@/components/score-badges";
 import { CastList } from "@/components/cast-list";
@@ -20,25 +19,8 @@ const MAX_CAST_MEMBERS = 12;
 // load could trigger ~20 OMDb calls. 8 matches the widest grid breakpoint
 // (grid-cols-8 in movie-grid.tsx), so it's still a full row, not a partial one.
 const MAX_ENRICHED_RECOMMENDATIONS = 8;
-const NO_RATINGS: MovieRatings = { imdbRating: null, rottenTomatoesScore: null };
 
 const POSTER_BASE_URL = "https://image.tmdb.org/t/p/w500";
-
-// Ratings are an enrichment, never a reason this page should fail to
-// render - any failure (rate limit, network error, etc.) degrades to "no
-// ratings available" rather than throwing, same as ratings.ts's resilience
-// for the grid. Called directly with the already-known imdb_id (not via
-// ratings.ts's getMovieRatings) to avoid a redundant external_ids lookup,
-// since TMDB's movie details response already includes it.
-async function fetchOwnRatings(imdbId: string | null): Promise<MovieRatings> {
-  if (!imdbId) return NO_RATINGS;
-  try {
-    return await getMovieRatingsByImdbId(imdbId);
-  } catch (error) {
-    console.error(`Ratings fetch failed for movie imdb:${imdbId}, degrading to no ratings:`, error);
-    return NO_RATINGS;
-  }
-}
 
 export default async function MovieDetailPage({
   params,
@@ -52,9 +34,14 @@ export default async function MovieDetailPage({
     notFound();
   }
 
-  // Started immediately, alongside getMovieDetails below - neither depends
-  // on the details response, so there's no reason to wait for it first.
+  // Started immediately, alongside getMovieDetails below - none of these
+  // three depend on the details response. getMovieRatings (not a direct
+  // OMDb call) so this page's own rating shares ratings.ts's cache with
+  // every grid/mood-search/blend enrichment - a movie already looked up
+  // elsewhere in the last 24h costs nothing here instead of re-spending
+  // OMDb quota on every detail-page visit.
   const recommendationsPromise = getMovieRecommendations(movieId);
+  const ratingsPromise = getMovieRatings(movieId);
   const creditsPromise = getMovieCredits(movieId);
   // A bad id 404s on every endpoint, not just getMovieDetails - if these
   // reject while getMovieDetails is still in flight below, nothing has
@@ -62,6 +49,7 @@ export default async function MovieDetailPage({
   // real error is still observed via Promise.all further down; this just
   // pre-empts the false "unhandled" report if the details 404 wins first.
   recommendationsPromise.catch(() => {});
+  ratingsPromise.catch(() => {});
   creditsPromise.catch(() => {});
 
   let details;
@@ -76,7 +64,7 @@ export default async function MovieDetailPage({
 
   const [recommendations, ratings, credits] = await Promise.all([
     recommendationsPromise,
-    fetchOwnRatings(details.imdb_id),
+    ratingsPromise,
     creditsPromise,
   ]);
   const recommendationsWithRatings = await enrichMoviesWithRatings(

@@ -3,6 +3,9 @@ import { TMDBError } from "@/lib/tmdb";
 import { blendTitles, VibeBlendError } from "@/lib/vibe-blend";
 import { enrichTVWithRatings } from "@/lib/ratings";
 
+// See src/app/api/movies/vibe-blend/route.ts - same rationale.
+const MAX_ENRICHED_BLEND_RESULTS = 10;
+
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const idA = Number(searchParams.get("a"));
@@ -17,7 +20,8 @@ export async function GET(request: NextRequest) {
 
   try {
     const blend = await blendTitles(idA, idB, "tv");
-    const enriched = await enrichTVWithRatings(blend.results);
+    const topResults = blend.results.slice(0, MAX_ENRICHED_BLEND_RESULTS);
+    const enriched = await enrichTVWithRatings(topResults);
     return NextResponse.json({
       results: enriched,
       titleA: blend.titleA,
