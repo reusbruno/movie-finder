@@ -15,6 +15,7 @@ export function MovieGrid({
   basePath = "movies",
   eagerFirstRow = false,
   canExplainMore = false,
+  trimTrailingRow = false,
 }: {
   // Per-item mediaType is optional - only the watchlist grid mixes movies
   // and TV in one grid and needs it; see movie-card.tsx.
@@ -27,6 +28,15 @@ export function MovieGrid({
   eagerFirstRow?: boolean;
   // Whether the on-demand LLM elaboration is available - see movie-card.tsx.
   canExplainMore?: boolean;
+  // Hides a ragged trailing partial row per breakpoint (gridItemVisibilityClass
+  // in grid-visibility.ts) instead of showing an uneven last line. Defaults
+  // to false - safe only when every hidden item stays reachable some other
+  // way, e.g. a "Load more" button that will eventually reveal them. A grid
+  // with no pagination (popular/mood/blend/search results, watchlist,
+  // detail-page recommendations) must NOT trim: those items were already
+  // fetched and have no other path to becoming visible, so hiding them
+  // would silently discard real results rather than just tidy a row.
+  trimTrailingRow?: boolean;
 }) {
   if (movies.length === 0) {
     return (
@@ -39,7 +49,9 @@ export function MovieGrid({
       {movies.map((movie, index) => (
         <div
           key={movie.id}
-          className={gridItemVisibilityClass(index, movies.length)}
+          className={
+            trimTrailingRow ? gridItemVisibilityClass(index, movies.length) : undefined
+          }
         >
           <MovieCard
             movie={movie}

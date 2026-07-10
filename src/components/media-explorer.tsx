@@ -957,6 +957,12 @@ export function MediaExplorer<TSortBy extends string>({
               basePath={basePath}
               eagerFirstRow
               canExplainMore={moodAvailable === true}
+              // Only Discover mode has "Load more", and only while
+              // canLoadMore is true does it actually promise to reveal a
+              // ragged trailing row later - once the last page is in
+              // (canLoadMore false) or we're in any other mode, nothing
+              // fetched should stay hidden with no way to reach it.
+              trimTrailingRow={canLoadMore}
             />
           </div>
           {canLoadMore && (
