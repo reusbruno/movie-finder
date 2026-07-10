@@ -270,7 +270,16 @@ export async function resolveMoodFilters(
   };
 }
 
-const MIN_MOOD_RESULTS = 5;
+// 5 was too lenient in practice: a query landing at *exactly* 5 (measured
+// directly - "slow melancholic sci-fi"'s 5 mood keywords OR'd, AND'd with
+// Science Fiction+Drama, gives exactly 5 against the live API) satisfied
+// `>= MIN_MOOD_RESULTS` and never triggered the keyword-drop relaxation
+// below, even though 5 is clearly too thin for a satisfying grid - and
+// dropping keywords for that same query yields 291-1,687 results depending
+// on vote-count threshold, so there's no real cost to relaxing more
+// readily. 10 gives a comfortable amount of variety without being so low
+// that a precise, well-populated keyword match gets discarded for no reason.
+const MIN_MOOD_RESULTS = 10;
 
 // Mood search's discover call can undershoot for two very different
 // reasons, and they don't deserve equal blame:
