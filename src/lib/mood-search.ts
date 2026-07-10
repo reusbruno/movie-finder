@@ -72,7 +72,12 @@ export async function interpretMoodQuery(
         type: "array",
         items: { type: "string", enum: options.genreNames },
         description:
-          "Genres from the allowed list that match the mood. Empty array if none clearly fit.",
+          "Genres from the allowed list that match the mood. Empty array if none clearly fit. " +
+          'Be careful with "Family" - on TMDB it means content aimed at children (animated ' +
+          "franchises, kids' movies), not just \"warm\" or \"wholesome\" in a general adult " +
+          'sense. Only include it when the query explicitly signals kids/family viewing (e.g. ' +
+          '"movie night with the kids", "something Pixar-like"), not for adult-oriented moods ' +
+          'like "cozy" or "feel-good" on their own - those are Comedy/Drama/etc. without Family.',
       },
       keywords: {
         type: "array",
@@ -242,26 +247,54 @@ export async function resolveMoodFilters(
   };
 }
 
-// Two AND'd genres (see discoverMovies/discoverTV's genreMatchMode) can
-// intersect to a much smaller - and differently-flavored - pool than
-// intended: "Comedy" + "Family" for a "cozy feel-good comedy" mood skews
-// toward kids' animation, since TMDB's Family genre leans heavily
-// children's, not "comedy that happens to also be gentle/wholesome". If the
-// strict AND undershoots, retry with just the primary genre dropped down to
-// one (still a hard filter, just not doubly so) rather than falling back to
-// an OR across genres, which would reintroduce the mismatched-genre bug the
-// AND mode itself exists to fix.
 const MIN_MOOD_RESULTS = 5;
 
-export async function discoverWithGenreFallback<T extends { results: unknown[] }>(
-  discover: (genreIds: number[]) => Promise<T>,
-  genreIds: number[]
-): Promise<T & { appliedGenreIds: number[] }> {
-  const results = await discover(genreIds);
-  if (genreIds.length > 1 && results.results.length < MIN_MOOD_RESULTS) {
-    const narrowed = genreIds.slice(0, 1);
-    const retry = await discover(narrowed);
-    return { ...retry, appliedGenreIds: narrowed };
+// Mood search's discover call can undershoot for two very different
+// reasons, and they don't deserve equal blame:
+//
+// - TMDB's keyword tagging for abstract tone/vibe words ("cozy",
+//   "wholesome", "feel-good") is sparse to the point of being nearly
+//   unusable as a hard filter - measured directly against the live API,
+//   individual mood keywords like these cover as few as 5-26 movies in
+//   TMDB's *entire* catalog. Even OR'd across 5 terms, that's a tiny pool,
+//   and AND-ing it with a genre collapses further still (Comedy alone:
+//   ~12,700 movies; Comedy AND [any of 5 mood keywords]: ~5).
+// - Two AND'd genres (see discoverMovies/discoverTV's genreMatchMode) can
+//   also over-narrow - "Comedy" + "Family" skews toward kids' animation,
+//   since TMDB's Family genre leans heavily children's - but genre tagging
+//   itself is comprehensive on TMDB, unlike keyword tagging, so it's a much
+//   smaller effect (Comedy AND Family, no keywords at all: ~1,746 movies).
+//
+// So the fallback relaxes keywords first, genre only as a last resort:
+// keywords are dropped from the hard filter entirely (not OR'd looser -
+// even OR'd, sparse tagging still starves the pool), then genre narrows to
+// just the primary genre if it's still thin. Dropping keywords here isn't
+// losing that signal outright - attachMatchExplanations still fetches each
+// candidate's own keywords and surfaces a genuine overlap in "why this
+// match" text; this only stops REQUIRING one for inclusion.
+export async function discoverWithMoodFallback<T extends { results: unknown[] }>(
+  discover: (genreIds: number[], keywordIds: number[]) => Promise<T>,
+  genreIds: number[],
+  keywordIds: number[]
+): Promise<T & { appliedGenreIds: number[]; appliedKeywordIds: number[] }> {
+  const attempts: { genreIds: number[]; keywordIds: number[] }[] = [
+    { genreIds, keywordIds },
+  ];
+  if (keywordIds.length > 0) {
+    attempts.push({ genreIds, keywordIds: [] });
   }
-  return { ...results, appliedGenreIds: genreIds };
+  if (genreIds.length > 1) {
+    attempts.push({ genreIds: genreIds.slice(0, 1), keywordIds: [] });
+  }
+
+  let attempt = attempts[0];
+  let result = await discover(attempt.genreIds, attempt.keywordIds);
+
+  for (const next of attempts.slice(1)) {
+    if (result.results.length >= MIN_MOOD_RESULTS) break;
+    attempt = next;
+    result = await discover(attempt.genreIds, attempt.keywordIds);
+  }
+
+  return { ...result, appliedGenreIds: attempt.genreIds, appliedKeywordIds: attempt.keywordIds };
 }

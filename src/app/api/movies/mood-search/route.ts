@@ -11,7 +11,7 @@ import {
   interpretMoodQuery,
   isMoodSearchAvailable,
   resolveMoodFilters,
-  discoverWithGenreFallback,
+  discoverWithMoodFallback,
   MoodSearchError,
 } from "@/lib/mood-search";
 import { attachMatchExplanations, explainMoodMatch } from "@/lib/match-explanation";
@@ -56,11 +56,11 @@ export async function POST(request: NextRequest) {
       ? (resolved.sortBy as MovieSortBy)
       : "popularity.desc";
 
-    const { appliedGenreIds, ...results } = await discoverWithGenreFallback(
-      (genreIds) =>
+    const { appliedGenreIds, appliedKeywordIds, ...results } = await discoverWithMoodFallback(
+      (genreIds, keywordIds) =>
         discoverMovies({
           genreIds,
-          keywordIds: resolved.keywordIds,
+          keywordIds,
           sortBy,
           yearRange: resolved.yearRange,
           // A mood's genres are a hard filter (must be Sci-Fi, not just
@@ -68,7 +68,8 @@ export async function POST(request: NextRequest) {
           // OR-by-default genre checkboxes - see discoverMovies.
           genreMatchMode: "all",
         }),
-      resolved.genreIds
+      resolved.genreIds,
+      resolved.keywordIds
     );
     const withExplanations = await attachMatchExplanations(
       results.results,
@@ -81,11 +82,18 @@ export async function POST(request: NextRequest) {
     const appliedGenreNames = appliedGenreIds
       .map((id) => resolved.genreNames.get(id))
       .filter((name): name is string => name !== undefined);
+    const appliedKeywordTerms = appliedKeywordIds
+      .map((id) => resolved.keywordNames.get(id))
+      .filter((name): name is string => name !== undefined);
 
     return NextResponse.json({
       ...results,
       results: enriched,
-      interpretation: { ...resolved.interpretation, genreNames: appliedGenreNames },
+      interpretation: {
+        ...resolved.interpretation,
+        genreNames: appliedGenreNames,
+        keywordTerms: appliedKeywordTerms,
+      },
     });
   } catch (error) {
     if (error instanceof MoodSearchError) {
