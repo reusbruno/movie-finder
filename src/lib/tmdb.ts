@@ -175,6 +175,15 @@ export function discoverMovies(options: {
   sortBy?: MovieSortBy;
   page?: number;
   yearRange?: TMDBYearRange;
+  // TMDB's with_genres treats "," as AND (must have every listed genre) and
+  // "|" as OR (must have any). "any" (OR) is the right default for the
+  // browse page's genre checkboxes - checking Action + Comedy there means
+  // "show me either", the standard multi-select filter convention. Mood
+  // search passes "all" instead: its genres are meant to be a hard,
+  // narrowing filter (e.g. "Science Fiction" for a sci-fi mood), and OR
+  // let unrelated single-genre matches (a Drama with no Sci-Fi at all)
+  // through whenever the LLM returned more than one genre.
+  genreMatchMode?: "any" | "all";
 }): Promise<TMDBSearchResponse> {
   const {
     genreIds = [],
@@ -182,6 +191,7 @@ export function discoverMovies(options: {
     sortBy = "popularity.desc",
     page = 1,
     yearRange,
+    genreMatchMode = "any",
   } = options;
 
   const params: Record<string, string> = {
@@ -192,7 +202,7 @@ export function discoverMovies(options: {
     ),
   };
   if (genreIds.length > 0) {
-    params.with_genres = genreIds.join("|");
+    params.with_genres = genreIds.join(genreMatchMode === "all" ? "," : "|");
   }
   if (keywordIds.length > 0) {
     params.with_keywords = keywordIds.join("|");
@@ -429,6 +439,9 @@ export function discoverTV(options: {
   sortBy?: TVSortBy;
   page?: number;
   yearRange?: TMDBYearRange;
+  // See discoverMovies - "any" (OR) for the browse page's genre checkboxes,
+  // "all" (AND) for mood search's harder genre filter.
+  genreMatchMode?: "any" | "all";
 }): Promise<TMDBSearchResponse> {
   const {
     genreIds = [],
@@ -436,6 +449,7 @@ export function discoverTV(options: {
     sortBy = "popularity.desc",
     page = 1,
     yearRange,
+    genreMatchMode = "any",
   } = options;
 
   const params: Record<string, string> = {
@@ -446,7 +460,7 @@ export function discoverTV(options: {
     ),
   };
   if (genreIds.length > 0) {
-    params.with_genres = genreIds.join("|");
+    params.with_genres = genreIds.join(genreMatchMode === "all" ? "," : "|");
   }
   if (keywordIds.length > 0) {
     params.with_keywords = keywordIds.join("|");

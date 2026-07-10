@@ -60,6 +60,10 @@ export async function POST(request: NextRequest) {
       keywordIds: resolved.keywordIds,
       sortBy,
       yearRange: resolved.yearRange,
+      // A mood's genres are a hard filter (must be Sci-Fi, not just "has
+      // some genre in common"), unlike the browse page's OR-by-default
+      // genre checkboxes - see discoverMovies.
+      genreMatchMode: "all",
     });
     const withExplanations = await attachMatchExplanations(
       results.results,

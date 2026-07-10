@@ -27,6 +27,11 @@ export class MoodSearchError extends Error {
 // Structured extraction of genres/keywords/sort from a short free-text query -
 // not open-ended reasoning, so the fast/cheap tier is the right fit here.
 const MOOD_SEARCH_MODEL = "claude-haiku-4-5";
+// Genres are now AND'd together in the discover call (see discoverMovies's
+// genreMatchMode) so a result has to actually match every one - capped low
+// so an LLM response with several loosely-related genres doesn't intersect
+// down to zero results.
+const MAX_GENRES_FROM_QUERY = 2;
 const MAX_KEYWORDS_FROM_QUERY = 5;
 const MAX_REFERENCE_TITLES = 3;
 const MAX_KEYWORDS_PER_REFERENCE_TITLE = 3;
@@ -168,6 +173,7 @@ export async function resolveMoodFilters(
 ): Promise<ResolvedMoodFilters> {
   const genreNameToId = new Map(genres.map((genre) => [genre.name, genre.id]));
   const genreIds = interpretation.genres
+    .slice(0, MAX_GENRES_FROM_QUERY)
     .map((name) => genreNameToId.get(name))
     .filter((id): id is number => id !== undefined);
   const genreNames = new Map(genreIds.map((id) => [id, genres.find((g) => g.id === id)!.name]));
@@ -226,7 +232,10 @@ export async function resolveMoodFilters(
     genreNames,
     keywordNames,
     interpretation: {
-      genreNames: interpretation.genres.filter((name) => genreNameToId.has(name)),
+      // Derived from the capped, resolved genreIds (not the raw LLM list)
+      // so the "Interpreted as: …" caption never shows a genre that isn't
+      // actually part of the AND filter below.
+      genreNames: [...genreNames.values()],
       keywordTerms: [...keywordTerms],
       sortBy: interpretation.sortBy,
     },

@@ -60,6 +60,9 @@ export async function POST(request: NextRequest) {
       keywordIds: resolved.keywordIds,
       sortBy,
       yearRange: resolved.yearRange,
+      // See src/app/api/movies/mood-search/route.ts - genre is a hard
+      // filter for mood search, unlike the browse page's OR checkboxes.
+      genreMatchMode: "all",
     });
     const withExplanations = await attachMatchExplanations(
       results.results,
