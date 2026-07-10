@@ -100,8 +100,22 @@ export async function interpretMoodQuery(
       yearRange: {
         type: "object",
         properties: {
-          gte: { type: "integer", description: "Earliest release year, if implied." },
-          lte: { type: "integer", description: "Latest release year, if implied." },
+          gte: {
+            type: "integer",
+            description:
+              "Earliest release year, if implied - including fuzzy temporal language, not " +
+              'just literal years/decades. Anchor "modern"/"contemporary"/"recent" to roughly ' +
+              "the last 10-15 years using today's date above (e.g. today 2026 -> gte ~2011-2016); " +
+              '"80s"/"90s"-style decade mentions -> that decade\'s start; explicit years/ranges -> ' +
+              "exact. Omit if the query has no temporal signal at all.",
+          },
+          lte: {
+            type: "integer",
+            description:
+              'Latest release year, if implied. "classic"/"old"/a named decade -> that decade\'s ' +
+              "end (leave gte unset for open-ended \"classic\"); explicit years/ranges -> exact. " +
+              "Omit if the query has no temporal signal at all.",
+          },
         },
         additionalProperties: false,
       },
@@ -110,13 +124,20 @@ export async function interpretMoodQuery(
     additionalProperties: false,
   };
 
+  // Real anchor for fuzzy temporal language ("modern", "recent", "classic") -
+  // without it the model has no idea what year range "modern" should mean
+  // and tends to treat it as a vibe keyword instead (see yearRange below).
+  const today = new Date().toISOString().slice(0, 10);
+
   let response: Anthropic.Message;
   try {
     response = await anthropic.messages.create({
       model: MOOD_SEARCH_MODEL,
       max_tokens: 1024,
       system:
-        "You translate a free-text mood or vibe description into structured filters for a movie/TV discovery search. Be conservative: only include genres, keywords, or titles you're confident are actually implied by the query.",
+        `Today's date is ${today}. You translate a free-text mood or vibe description into ` +
+        "structured filters for a movie/TV discovery search. Be conservative: only include " +
+        "genres, keywords, or titles you're confident are actually implied by the query.",
       messages: [{ role: "user", content: query }],
       output_config: { format: { type: "json_schema", schema } },
     });
@@ -168,6 +189,7 @@ export interface ResolvedMoodFilters {
     genreNames: string[];
     keywordTerms: string[];
     sortBy: string;
+    yearRange?: TMDBYearRange;
   };
 }
 
@@ -243,6 +265,7 @@ export async function resolveMoodFilters(
       genreNames: [...genreNames.values()],
       keywordTerms: [...keywordTerms],
       sortBy: interpretation.sortBy,
+      yearRange: interpretation.yearRange,
     },
   };
 }

@@ -14,10 +14,22 @@ const SEARCH_DEBOUNCE_MS = 400;
 const MIN_IMDB_OPTIONS = ["", "6", "7", "8", "9"] as const;
 const MIN_RT_OPTIONS = ["", "25", "50", "75", "90"] as const;
 
+// Surfaces mood search's resolved year range (if any) in the "Interpreted
+// as: …" caption - otherwise temporal language like "modern" or "80s" was
+// silently applied (or silently NOT applied) with no way to tell from the
+// UI, which is exactly what made a past bug here hard to spot.
+function formatYearRange(range?: { gte?: number; lte?: number }): string | null {
+  if (!range?.gte && !range?.lte) return null;
+  if (range.gte && range.lte) return `${range.gte}–${range.lte}`;
+  if (range.gte) return `${range.gte}+`;
+  return `through ${range.lte}`;
+}
+
 interface MoodInterpretation {
   genreNames: string[];
   keywordTerms: string[];
   sortBy: string;
+  yearRange?: { gte?: number; lte?: number };
 }
 
 export interface MediaExplorerConfig<TSortBy extends string> {
@@ -542,6 +554,8 @@ export function MediaExplorer<TSortBy extends string>({
             ? discoverResults === null
             : false;
 
+  const moodYearRangeLabel = formatYearRange(moodInterpretation?.yearRange);
+
   const heading =
     mode === "blend"
       ? blendCaption
@@ -624,9 +638,11 @@ export function MediaExplorer<TSortBy extends string>({
             {moodInterpretation && (
               <span>
                 Interpreted as:{" "}
-                {[...moodInterpretation.genreNames, ...moodInterpretation.keywordTerms].join(
-                  ", "
-                ) || "no specific filters"}
+                {[
+                  ...moodInterpretation.genreNames,
+                  ...moodInterpretation.keywordTerms,
+                  ...(moodYearRangeLabel ? [moodYearRangeLabel] : []),
+                ].join(", ") || "no specific filters"}
               </span>
             )}
             <button type="button" onClick={clearMood} className="underline">
