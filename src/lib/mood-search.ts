@@ -270,6 +270,82 @@ export async function resolveMoodFilters(
   };
 }
 
+// Client-shareable shape of a resolved mood interpretation, round-tripped
+// so a later filter change can re-run discovery without re-invoking the
+// LLM (see the mood-search route's cachedInterpretation branch - no
+// query text, no rate limit, no Anthropic spend, just a fresh TMDB
+// discover call with updated filters). Genre/keyword names travel
+// alongside their ids so match-explanation can still build "why this
+// match" text without a second TMDB round-trip to look names back up.
+export interface ResolvedMoodParams {
+  genres: { id: number; name: string }[];
+  keywords: { id: number; name: string }[];
+  sortBy: string;
+  yearRange?: TMDBYearRange;
+}
+
+export function toResolvedMoodParams(resolved: ResolvedMoodFilters): ResolvedMoodParams {
+  return {
+    genres: [...resolved.genreNames.entries()].map(([id, name]) => ({ id, name })),
+    keywords: [...resolved.keywordNames.entries()].map(([id, name]) => ({ id, name })),
+    sortBy: resolved.sortBy,
+    yearRange: resolved.yearRange,
+  };
+}
+
+export function fromResolvedMoodParams(params: ResolvedMoodParams): {
+  genreIds: number[];
+  genreNames: Map<number, string>;
+  keywordIds: number[];
+  keywordNames: Map<number, string>;
+  sortBy: string;
+  yearRange?: TMDBYearRange;
+} {
+  return {
+    genreIds: params.genres.map((g) => g.id),
+    genreNames: new Map(params.genres.map((g) => [g.id, g.name])),
+    keywordIds: params.keywords.map((k) => k.id),
+    keywordNames: new Map(params.keywords.map((k) => [k.id, k.name])),
+    sortBy: params.sortBy,
+    yearRange: params.yearRange,
+  };
+}
+
+// User-set filters win over whatever the LLM extracted - see CLAUDE.md's
+// architecture note on why mood search stopped being mutually exclusive
+// with filters (real user feedback: filtering felt broken combined with
+// mood search). Keywords always pass through untouched regardless of
+// overrides - there's no UI control for them, so there's never a real
+// conflict to resolve. A genre override also switches genre matching from
+// mood's AND (a hard, narrowing filter meant for LLM-extracted genres) to
+// the browse page's own OR convention - selectedGenres is that exact same
+// checkbox state, so once the user is explicitly picking genres, they get
+// checkbox semantics, not mood's.
+export interface MoodFilterOverrides {
+  genreIds?: number[];
+  sortBy?: string;
+  watchProviderIds?: number[];
+  watchRegion?: string;
+}
+
+export function applyMoodFilterOverrides(
+  params: { genreIds: number[]; sortBy: string; yearRange?: TMDBYearRange },
+  overrides: MoodFilterOverrides
+): {
+  genreIds: number[];
+  genreMatchMode: "any" | "all";
+  sortBy: string;
+  yearRange?: TMDBYearRange;
+} {
+  const hasGenreOverride = Boolean(overrides.genreIds && overrides.genreIds.length > 0);
+  return {
+    genreIds: hasGenreOverride ? overrides.genreIds! : params.genreIds,
+    genreMatchMode: hasGenreOverride ? "any" : "all",
+    sortBy: overrides.sortBy ?? params.sortBy,
+    yearRange: params.yearRange,
+  };
+}
+
 // 5 was too lenient in practice: a query landing at *exactly* 5 (measured
 // directly - "slow melancholic sci-fi"'s 5 mood keywords OR'd, AND'd with
 // Science Fiction+Drama, gives exactly 5 against the live API) satisfied

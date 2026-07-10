@@ -184,6 +184,14 @@ export function discoverMovies(options: {
   // let unrelated single-genre matches (a Drama with no Sci-Fi at all)
   // through whenever the LLM returned more than one genre.
   genreMatchMode?: "any" | "all";
+  // "Streaming on" filter (curated list in watch-providers.ts). OR'd
+  // together (any of the selected platforms) - watch_region is required
+  // by TMDB whenever with_watch_providers is set. Scoped to
+  // with_watch_monetization_types=flatrate specifically: a "Streaming on
+  // Netflix" filter means subscription-streamable there, not "available
+  // to rent/buy through Netflix's storefront".
+  watchProviderIds?: number[];
+  watchRegion?: string;
 }): Promise<TMDBSearchResponse> {
   const {
     genreIds = [],
@@ -192,6 +200,8 @@ export function discoverMovies(options: {
     page = 1,
     yearRange,
     genreMatchMode = "any",
+    watchProviderIds = [],
+    watchRegion,
   } = options;
 
   const params: Record<string, string> = {
@@ -212,6 +222,11 @@ export function discoverMovies(options: {
   }
   if (yearRange?.lte) {
     params["primary_release_date.lte"] = `${yearRange.lte}-12-31`;
+  }
+  if (watchProviderIds.length > 0 && watchRegion) {
+    params.with_watch_providers = watchProviderIds.join("|");
+    params.watch_region = watchRegion;
+    params.with_watch_monetization_types = "flatrate";
   }
 
   return tmdbFetch<TMDBSearchResponse>("/discover/movie", params);
@@ -442,6 +457,9 @@ export function discoverTV(options: {
   // See discoverMovies - "any" (OR) for the browse page's genre checkboxes,
   // "all" (AND) for mood search's harder genre filter.
   genreMatchMode?: "any" | "all";
+  // See discoverMovies.
+  watchProviderIds?: number[];
+  watchRegion?: string;
 }): Promise<TMDBSearchResponse> {
   const {
     genreIds = [],
@@ -450,6 +468,8 @@ export function discoverTV(options: {
     page = 1,
     yearRange,
     genreMatchMode = "any",
+    watchProviderIds = [],
+    watchRegion,
   } = options;
 
   const params: Record<string, string> = {
@@ -470,6 +490,11 @@ export function discoverTV(options: {
   }
   if (yearRange?.lte) {
     params["first_air_date.lte"] = `${yearRange.lte}-12-31`;
+  }
+  if (watchProviderIds.length > 0 && watchRegion) {
+    params.with_watch_providers = watchProviderIds.join("|");
+    params.watch_region = watchRegion;
+    params.with_watch_monetization_types = "flatrate";
   }
 
   return tmdbFetch<RawTMDBSearchResponse>("/discover/tv", params).then(

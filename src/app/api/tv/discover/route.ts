@@ -7,6 +7,7 @@ import {
   type TVSortBy,
 } from "@/lib/tmdb";
 import { enrichTVWithRatings, passesRatingFilters } from "@/lib/ratings";
+import { isWatchRegion } from "@/lib/watch-providers";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -70,8 +71,42 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  const watchProvidersParam = searchParams.get("watch_providers");
+  const watchProviderIds = watchProvidersParam
+    ? watchProvidersParam
+        .split(",")
+        .map(Number)
+        .filter((n) => Number.isInteger(n) && n > 0)
+    : [];
+  if (watchProvidersParam && watchProviderIds.length === 0) {
+    return NextResponse.json(
+      { error: "Query parameter 'watch_providers' must be a comma-separated list of ids" },
+      { status: 400 }
+    );
+  }
+
+  const regionParam = searchParams.get("region");
+  if (regionParam && !isWatchRegion(regionParam)) {
+    return NextResponse.json(
+      { error: "Query parameter 'region' is not a supported region" },
+      { status: 400 }
+    );
+  }
+  if (watchProviderIds.length > 0 && !regionParam) {
+    return NextResponse.json(
+      { error: "Query parameter 'region' is required when 'watch_providers' is set" },
+      { status: 400 }
+    );
+  }
+
   try {
-    const results = await discoverTV({ genreIds, sortBy, page });
+    const results = await discoverTV({
+      genreIds,
+      sortBy,
+      page,
+      watchProviderIds,
+      watchRegion: regionParam ?? undefined,
+    });
     const enriched = await enrichTVWithRatings(results.results);
     const filtered = enriched.filter((show) =>
       passesRatingFilters(show.ratings, minImdb, minRt)

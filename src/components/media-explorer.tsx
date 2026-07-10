@@ -1,16 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { TMDB_MAX_DISCOVER_PAGE, type TMDBGenre } from "@/lib/tmdb";
 import type { MovieWithRatings } from "@/lib/ratings";
 import { MovieGrid } from "@/components/movie-grid";
 import { GenreFilter } from "@/components/genre-filter";
 import { FilterPanel } from "@/components/filter-panel";
+import { StreamingFilter } from "@/components/streaming-filter";
+import { STREAMING_PROVIDERS } from "@/lib/watch-providers";
 import type { PickedTitle } from "@/components/title-picker";
 import { SkeletonGrid } from "@/components/skeletons";
 import { HeroSearch } from "@/components/hero-search";
 import { InterpretationChips } from "@/components/interpretation-chips";
+import { useWatchRegion } from "@/lib/use-watch-region";
 
 const SEARCH_DEBOUNCE_MS = 400;
 const MIN_IMDB_OPTIONS = ["", "6", "7", "8", "9"] as const;
@@ -30,6 +33,18 @@ function formatYearRange(range?: { gte?: number; lte?: number }): string | null 
 interface MoodInterpretation {
   genreNames: string[];
   keywordTerms: string[];
+  sortBy: string;
+  yearRange?: { gte?: number; lte?: number };
+}
+
+// Mirrors src/lib/mood-search.ts's ResolvedMoodParams - duplicated here
+// (not imported) because that module pulls in the Anthropic SDK and can't
+// be part of the client bundle. Carries the LLM's raw genre/keyword ids
+// and names so a later filter change can re-run discovery against the
+// same interpretation without spending another Anthropic call.
+interface ResolvedMoodParams {
+  genres: { id: number; name: string }[];
+  keywords: { id: number; name: string }[];
   sortBy: string;
   yearRange?: { gte?: number; lte?: number };
 }
@@ -78,6 +93,24 @@ export function MediaExplorer<TSortBy extends string>({
   const [sortBy, setSortBy] = useState<TSortBy>(defaultSort);
   const [minImdb, setMinImdb] = useState("");
   const [minRt, setMinRt] = useState("");
+  const [selectedWatchProviders, setSelectedWatchProviders] = useState<number[]>([]);
+  const { region } = useWatchRegion();
+  // Provider ids aren't portable across regions (e.g. Prime Video is a
+  // different id in the US vs Brazil - see watch-providers.ts). Rather than
+  // clearing selectedWatchProviders on a region switch (which would mean
+  // setState inside an effect just to synchronize derived state), filter to
+  // only the ids valid in the CURRENT region wherever the filter is
+  // actually applied - a stale id from another region simply stops
+  // contributing until that region is selected again.
+  // Memoized so it's referentially stable across renders that don't
+  // actually change selectedWatchProviders/region - it's used as a
+  // useEffect dependency below, where a fresh array identity every render
+  // would defeat the "only refetch on a real change" guard those effects
+  // rely on.
+  const activeWatchProviderIds = useMemo(() => {
+    const validIds = new Set(STREAMING_PROVIDERS[region].map((p) => p.id));
+    return selectedWatchProviders.filter((id) => validIds.has(id));
+  }, [selectedWatchProviders, region]);
 
   // null while the availability check is in flight - the input renders
   // disabled either way, so there's no flash of an enabled box.
@@ -86,6 +119,12 @@ export function MediaExplorer<TSortBy extends string>({
   const [moodQuery, setMoodQuery] = useState("");
   const [moodResults, setMoodResults] = useState<MovieWithRatings[] | null>(null);
   const [moodInterpretation, setMoodInterpretation] = useState<MoodInterpretation | null>(
+    null
+  );
+  // The LLM's raw interpretation, kept around so a filter change while mood
+  // is active can re-run discovery (via cachedInterpretation below) without
+  // spending another Anthropic call.
+  const [moodResolvedParams, setMoodResolvedParams] = useState<ResolvedMoodParams | null>(
     null
   );
   const [moodLoading, setMoodLoading] = useState(false);
@@ -97,6 +136,11 @@ export function MediaExplorer<TSortBy extends string>({
   const [moodRateLimitMessage, setMoodRateLimitMessage] = useState<string | null>(null);
   const moodAbortRef = useRef<AbortController | null>(null);
   const moodRequestIdRef = useRef(0);
+  // Tracks the filter state (genres/sort/ratings/providers) as of the last
+  // mood fetch, so the filter-change effect below can tell "a filter
+  // genuinely changed since we last asked" apart from "moodResolvedParams
+  // just settled from our own fetch" - see the effect for how it's used.
+  const moodFetchKeyRef = useRef<string | null>(null);
 
   const [blendTitleA, setBlendTitleA] = useState<PickedTitle | null>(null);
   const [blendTitleB, setBlendTitleB] = useState<PickedTitle | null>(null);
@@ -162,7 +206,8 @@ export function MediaExplorer<TSortBy extends string>({
     sortBy !== defaultSort ||
     selectedGenres.length > 0 ||
     minImdb !== "" ||
-    minRt !== "";
+    minRt !== "" ||
+    activeWatchProviderIds.length > 0;
 
   // Blend and mood search are both explicit, deliberate actions (submit, not
   // live-typing), so they take priority over the passive search/filter
@@ -182,13 +227,43 @@ export function MediaExplorer<TSortBy extends string>({
   function clearMood() {
     moodAbortRef.current?.abort();
     moodRequestIdRef.current += 1;
+    moodFetchKeyRef.current = null;
     setMoodInput("");
     setMoodQuery("");
     setMoodResults(null);
     setMoodInterpretation(null);
+    setMoodResolvedParams(null);
     setMoodError(null);
     setMoodRateLimitMessage(null);
     setMoodLoading(false);
+  }
+
+  // Snapshot of the filter state a mood fetch is about to reflect - genre/
+  // sort/rating/streaming overrides sent alongside the query, and the key
+  // moodFetchKeyRef compares against to detect a later, genuine filter
+  // change (see the effect below).
+  function currentFilterKey() {
+    return JSON.stringify({
+      genres: [...selectedGenres].sort((a, b) => a - b),
+      sortBy,
+      minImdb,
+      minRt,
+      providers: [...activeWatchProviderIds].sort((a, b) => a - b),
+      region,
+    });
+  }
+
+  function moodFilterOverrides(): Record<string, unknown> {
+    const overrides: Record<string, unknown> = {};
+    if (selectedGenres.length > 0) overrides.genreIds = selectedGenres;
+    if (sortBy !== defaultSort) overrides.sortBy = sortBy;
+    if (minImdb) overrides.minImdb = Number(minImdb);
+    if (minRt) overrides.minRt = Number(minRt);
+    if (activeWatchProviderIds.length > 0) {
+      overrides.watchProviderIds = activeWatchProviderIds;
+      overrides.watchRegion = region;
+    }
+    return overrides;
   }
 
   function clearBlend() {
@@ -260,8 +335,11 @@ export function MediaExplorer<TSortBy extends string>({
     setQuery(value);
   }
 
+  // Genre/sort/rating/streaming filters now compose with an active mood
+  // search instead of clearing it (see the filter-change effect below) -
+  // blend still doesn't compose with filters, so it's still cleared here.
+  // Plain search text stays mutually exclusive with mood - see updateQuery.
   function toggleGenre(id: number) {
-    if (moodQuery) clearMood();
     if (blendActive) clearBlend();
     setSelectedGenres((prev) =>
       prev.includes(id) ? prev.filter((genreId) => genreId !== id) : [...prev, id]
@@ -269,21 +347,25 @@ export function MediaExplorer<TSortBy extends string>({
   }
 
   function updateSortBy(value: TSortBy) {
-    if (moodQuery) clearMood();
     if (blendActive) clearBlend();
     setSortBy(value);
   }
 
   function updateMinImdb(value: string) {
-    if (moodQuery) clearMood();
     if (blendActive) clearBlend();
     setMinImdb(value);
   }
 
   function updateMinRt(value: string) {
-    if (moodQuery) clearMood();
     if (blendActive) clearBlend();
     setMinRt(value);
+  }
+
+  function toggleWatchProvider(id: number) {
+    if (blendActive) clearBlend();
+    setSelectedWatchProviders((prev) =>
+      prev.includes(id) ? prev.filter((providerId) => providerId !== id) : [...prev, id]
+    );
   }
 
   // Checked once on mount - the mood input renders visible-but-disabled
@@ -303,22 +385,21 @@ export function MediaExplorer<TSortBy extends string>({
     };
   }, [moodSearchEndpoint]);
 
-  async function submitMood(rawQuery: string) {
-    const trimmed = rawQuery.trim();
-    if (!trimmed || !moodAvailable) return;
-
+  // Shared by a fresh query submission and a filter change while mood is
+  // already active - the latter passes cachedInterpretation instead of
+  // query, which skips the LLM call (and its rate limit) entirely on the
+  // server. Active genre/sort/rating/streaming filters are sent as
+  // overrides either way, so a filter set before a fresh mood submit is
+  // respected immediately rather than only applying on the next change.
+  async function runMoodDiscovery(
+    payloadBase: { query: string } | { cachedInterpretation: ResolvedMoodParams }
+  ) {
     moodAbortRef.current?.abort();
     const controller = new AbortController();
     moodAbortRef.current = controller;
     const requestId = ++moodRequestIdRef.current;
 
-    if (blendActive) clearBlend();
-    setQuery("");
-    setSelectedGenres([]);
-    setSortBy(defaultSort);
-    setMinImdb("");
-    setMinRt("");
-    setMoodQuery(trimmed);
+    moodFetchKeyRef.current = currentFilterKey();
     setMoodLoading(true);
     setMoodError(null);
     setMoodRateLimitMessage(null);
@@ -327,7 +408,7 @@ export function MediaExplorer<TSortBy extends string>({
       const response = await fetch(moodSearchEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: trimmed }),
+        body: JSON.stringify({ ...payloadBase, ...moodFilterOverrides() }),
         signal: controller.signal,
       });
       const data = await response.json();
@@ -338,8 +419,11 @@ export function MediaExplorer<TSortBy extends string>({
         // Roll back to "no mood search happened" rather than leaving
         // mode stuck on "mood" with moodResults forever null - that would
         // pin the grid on its loading skeleton with no way out, which
-        // reads as broken, not as "wait a moment".
-        setMoodQuery("");
+        // reads as broken, not as "wait a moment". Only the fresh-query
+        // path can actually hit this (the cached path isn't rate-limited).
+        if ("query" in payloadBase) {
+          setMoodQuery("");
+        }
         setMoodRateLimitMessage(
           data.error ?? "Too many searches — wait a moment and try again."
         );
@@ -352,6 +436,7 @@ export function MediaExplorer<TSortBy extends string>({
 
       setMoodResults(data.results);
       setMoodInterpretation(data.interpretation ?? null);
+      setMoodResolvedParams(data.resolvedParams ?? null);
     } catch (err) {
       if (requestId !== moodRequestIdRef.current) return;
       if (err instanceof DOMException && err.name === "AbortError") return;
@@ -365,6 +450,16 @@ export function MediaExplorer<TSortBy extends string>({
     }
   }
 
+  async function submitMood(rawQuery: string) {
+    const trimmed = rawQuery.trim();
+    if (!trimmed || !moodAvailable) return;
+
+    if (blendActive) clearBlend();
+    setQuery("");
+    setMoodQuery(trimmed);
+    await runMoodDiscovery({ query: trimmed });
+  }
+
   function buildDiscoverParams(targetPage: number) {
     const params = new URLSearchParams({ sort_by: sortBy, page: String(targetPage) });
     if (selectedGenres.length > 0) {
@@ -375,6 +470,10 @@ export function MediaExplorer<TSortBy extends string>({
     }
     if (minRt) {
       params.set("min_rt", minRt);
+    }
+    if (activeWatchProviderIds.length > 0) {
+      params.set("watch_providers", activeWatchProviderIds.join(","));
+      params.set("region", region);
     }
     return params;
   }
@@ -465,10 +564,15 @@ export function MediaExplorer<TSortBy extends string>({
     return () => clearTimeout(timeout);
   }, [trimmedQuery, searchEndpoint, itemsLabel]);
 
-  // Only runs when there's no query and at least one filter differs from
-  // its default - otherwise the static Popular grid is shown, no fetch.
+  // Only runs when there's no query, at least one filter differs from its
+  // default, and mood isn't active - otherwise the static Popular grid is
+  // shown, no fetch. The moodQuery check matters now that filters compose
+  // with mood instead of clearing it (see toggleGenre etc. above): without
+  // it, a filter change while mood is active would still fire this discover
+  // fetch in the background (mode stays "mood" so nothing renders it, but
+  // it's a wasted TMDB/OMDb round trip on every filter tweak).
   useEffect(() => {
-    if (trimmedQuery !== "" || !filtersActive) {
+    if (trimmedQuery !== "" || !filtersActive || moodQuery !== "") {
       discoverAbortRef.current?.abort();
       discoverRequestIdRef.current += 1;
       return;
@@ -516,7 +620,34 @@ export function MediaExplorer<TSortBy extends string>({
 
     return () => clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trimmedQuery, selectedGenres, sortBy, minImdb, minRt, discoverEndpoint, itemsLabel]);
+  }, [
+    trimmedQuery,
+    selectedGenres,
+    sortBy,
+    minImdb,
+    minRt,
+    activeWatchProviderIds,
+    region,
+    moodQuery,
+    discoverEndpoint,
+    itemsLabel,
+  ]);
+
+  // Re-runs discovery against the mood interpretation already on hand
+  // (moodResolvedParams) whenever a filter changes while mood is active -
+  // this is what makes filters compose with mood instead of clearing it.
+  // Guarded two ways: moodResolvedParams being null means the initial
+  // query fetch hasn't resolved yet (nothing to re-run against), and the
+  // key comparison distinguishes a genuine filter change from this effect
+  // re-running merely because moodResolvedParams itself just settled from
+  // that same initial fetch (moodFetchKeyRef is set at the start of every
+  // mood fetch, so a matching key means "already reflects this state").
+  useEffect(() => {
+    if (moodQuery === "" || !moodResolvedParams) return;
+    if (currentFilterKey() === moodFetchKeyRef.current) return;
+    runMoodDiscovery({ cachedInterpretation: moodResolvedParams });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedGenres, sortBy, minImdb, minRt, activeWatchProviderIds, region, moodQuery, moodResolvedParams]);
 
   async function loadMoreDiscover() {
     discoverAbortRef.current?.abort();
@@ -631,7 +762,8 @@ export function MediaExplorer<TSortBy extends string>({
     (selectedGenres.length > 0 ? 1 : 0) +
     (sortBy !== defaultSort ? 1 : 0) +
     (minImdb ? 1 : 0) +
-    (minRt ? 1 : 0);
+    (minRt ? 1 : 0) +
+    (activeWatchProviderIds.length > 0 ? 1 : 0);
   // Shown on the collapsed "Browse with filters" entry point so results
   // never look mysteriously filtered/searched with no visible cause once
   // the row that set them is hidden - includes the quick-search query too,
@@ -795,6 +927,11 @@ export function MediaExplorer<TSortBy extends string>({
                 </select>
               </label>
             </div>
+            <StreamingFilter
+              region={region}
+              selectedProviderIds={selectedWatchProviders}
+              onToggle={toggleWatchProvider}
+            />
             {filterFootnote}
           </FilterPanel>
         </div>

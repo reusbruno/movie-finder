@@ -18,6 +18,32 @@ export type WatchRegion = (typeof WATCH_REGIONS)[number]["code"];
 
 export const DEFAULT_WATCH_REGION: WatchRegion = "US";
 
+// Curated, not TMDB's full hundreds-long provider list - the "big obvious
+// ones" per region, a short checklist rather than a searchable dropdown
+// for v1. IDs verified directly against the live
+// /watch/providers/movie?watch_region=<region> API, not guessed - the
+// same nominal service can have a different id per region (Prime Video is
+// 9 in the US but 119 in Brazil), and TMDB's "Apple TV" (350) is the
+// actual Apple TV+ subscription service, distinct from "Apple TV Store"
+// (2), the separate rent/buy storefront.
+export const STREAMING_PROVIDERS: Record<WatchRegion, { id: number; name: string }[]> = {
+  US: [
+    { id: 8, name: "Netflix" },
+    { id: 9, name: "Prime Video" },
+    { id: 337, name: "Disney+" },
+    { id: 1899, name: "Max" },
+    { id: 350, name: "Apple TV+" },
+    { id: 15, name: "Hulu" },
+  ],
+  BR: [
+    { id: 8, name: "Netflix" },
+    { id: 119, name: "Prime Video" },
+    { id: 337, name: "Disney+" },
+    { id: 1899, name: "Max" },
+    { id: 307, name: "Globoplay" },
+  ],
+};
+
 export function isWatchRegion(value: string): value is WatchRegion {
   return WATCH_REGIONS.some((region) => region.code === value);
 }
