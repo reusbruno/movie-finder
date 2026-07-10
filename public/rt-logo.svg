@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="Rotten Tomatoes">
+  <circle cx="8" cy="9.5" r="5.5" fill="#FA320A"/>
+  <ellipse cx="5.5" cy="3.6" rx="2.1" ry="1.2" fill="#3F8A3E" transform="rotate(-25 5.5 3.6)"/>
+  <ellipse cx="10.5" cy="3.6" rx="2.1" ry="1.2" fill="#3F8A3E" transform="rotate(25 10.5 3.6)"/>
+</svg>
