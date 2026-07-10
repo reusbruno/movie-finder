@@ -15,8 +15,13 @@ import {
   MoodSearchError,
 } from "@/lib/mood-search";
 import { attachMatchExplanations, explainMoodMatch } from "@/lib/match-explanation";
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 const MAX_QUERY_LENGTH = 300;
+// This route spends Anthropic credits per call - generous for a human
+// typing queries, tight enough to blunt a script hammering it.
+const RATE_LIMIT = 10;
+const RATE_LIMIT_WINDOW_MS = 60_000;
 
 export async function GET() {
   return NextResponse.json({ available: isMoodSearchAvailable() });
@@ -25,6 +30,18 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   if (!isMoodSearchAvailable()) {
     return NextResponse.json({ error: "Mood search is not configured" }, { status: 503 });
+  }
+
+  const { allowed, retryAfterSeconds } = checkRateLimit(
+    `movies-mood-search:${getClientIp(request)}`,
+    RATE_LIMIT,
+    RATE_LIMIT_WINDOW_MS
+  );
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "Too many searches — wait a moment and try again." },
+      { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } }
+    );
   }
 
   let body: unknown;

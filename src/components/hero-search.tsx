@@ -24,6 +24,7 @@ export function HeroSearch({
   onSubmitMood,
   moodAvailable,
   moodLoading,
+  moodRateLimitMessage,
   searchEndpoint,
   blendTitleA,
   blendTitleB,
@@ -47,6 +48,7 @@ export function HeroSearch({
   onSubmitMood: () => void;
   moodAvailable: boolean | null;
   moodLoading: boolean;
+  moodRateLimitMessage: string | null;
   searchEndpoint: string;
   blendTitleA: PickedTitle | null;
   blendTitleB: PickedTitle | null;
@@ -135,6 +137,9 @@ export function HeroSearch({
 
       {moodAvailable === false && heroView === "mood" && (
         <p className="text-xs text-foreground/50">Mood search — coming soon</p>
+      )}
+      {moodRateLimitMessage && heroView === "mood" && (
+        <p className="text-xs text-foreground/50">{moodRateLimitMessage}</p>
       )}
 
       <div className="flex flex-wrap items-center justify-center gap-5">

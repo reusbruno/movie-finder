@@ -90,6 +90,11 @@ export function MediaExplorer<TSortBy extends string>({
   );
   const [moodLoading, setMoodLoading] = useState(false);
   const [moodError, setMoodError] = useState<string | null>(null);
+  // Separate from moodError: a 429 is an expected, self-inflicted,
+  // transient state (same category as surpriseMessage below), not a real
+  // failure - it renders as a quiet note near the input instead of the
+  // red error text a genuine fetch failure gets.
+  const [moodRateLimitMessage, setMoodRateLimitMessage] = useState<string | null>(null);
   const moodAbortRef = useRef<AbortController | null>(null);
   const moodRequestIdRef = useRef(0);
 
@@ -182,6 +187,7 @@ export function MediaExplorer<TSortBy extends string>({
     setMoodResults(null);
     setMoodInterpretation(null);
     setMoodError(null);
+    setMoodRateLimitMessage(null);
     setMoodLoading(false);
   }
 
@@ -315,6 +321,7 @@ export function MediaExplorer<TSortBy extends string>({
     setMoodQuery(trimmed);
     setMoodLoading(true);
     setMoodError(null);
+    setMoodRateLimitMessage(null);
 
     try {
       const response = await fetch(moodSearchEndpoint, {
@@ -326,6 +333,18 @@ export function MediaExplorer<TSortBy extends string>({
       const data = await response.json();
 
       if (requestId !== moodRequestIdRef.current) return;
+
+      if (response.status === 429) {
+        // Roll back to "no mood search happened" rather than leaving
+        // mode stuck on "mood" with moodResults forever null - that would
+        // pin the grid on its loading skeleton with no way out, which
+        // reads as broken, not as "wait a moment".
+        setMoodQuery("");
+        setMoodRateLimitMessage(
+          data.error ?? "Too many searches — wait a moment and try again."
+        );
+        return;
+      }
 
       if (!response.ok) {
         throw new Error(data.error ?? "Failed to interpret mood query");
@@ -673,6 +692,7 @@ export function MediaExplorer<TSortBy extends string>({
         onSubmitMood={() => submitMood(moodInput)}
         moodAvailable={moodAvailable}
         moodLoading={moodLoading}
+        moodRateLimitMessage={moodRateLimitMessage}
         searchEndpoint={searchEndpoint}
         blendTitleA={blendTitleA}
         blendTitleB={blendTitleB}

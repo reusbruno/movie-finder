@@ -5,6 +5,12 @@ import {
   ExplainMatchError,
   EXPLAIN_MATCH_LIMITS,
 } from "@/lib/explain-match";
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
+
+// This route spends Anthropic credits per call - see
+// src/app/api/movies/mood-search/route.ts for the same policy.
+const RATE_LIMIT = 10;
+const RATE_LIMIT_WINDOW_MS = 60_000;
 
 export async function GET() {
   return NextResponse.json({ available: isExplainMatchAvailable() });
@@ -13,6 +19,18 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   if (!isExplainMatchAvailable()) {
     return NextResponse.json({ error: "This feature is not configured" }, { status: 503 });
+  }
+
+  const { allowed, retryAfterSeconds } = checkRateLimit(
+    `explain-match:${getClientIp(request)}`,
+    RATE_LIMIT,
+    RATE_LIMIT_WINDOW_MS
+  );
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "Too many requests — wait a moment and try again." },
+      { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } }
+    );
   }
 
   let body: unknown;

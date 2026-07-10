@@ -15,8 +15,13 @@ import {
   MoodSearchError,
 } from "@/lib/mood-search";
 import { attachMatchExplanations, explainMoodMatch } from "@/lib/match-explanation";
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 const MAX_QUERY_LENGTH = 300;
+// See src/app/api/movies/mood-search/route.ts - same policy, separate
+// bucket per route.
+const RATE_LIMIT = 10;
+const RATE_LIMIT_WINDOW_MS = 60_000;
 
 export async function GET() {
   return NextResponse.json({ available: isMoodSearchAvailable() });
@@ -25,6 +30,18 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   if (!isMoodSearchAvailable()) {
     return NextResponse.json({ error: "Mood search is not configured" }, { status: 503 });
+  }
+
+  const { allowed, retryAfterSeconds } = checkRateLimit(
+    `tv-mood-search:${getClientIp(request)}`,
+    RATE_LIMIT,
+    RATE_LIMIT_WINDOW_MS
+  );
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "Too many searches — wait a moment and try again." },
+      { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } }
+    );
   }
 
   let body: unknown;
