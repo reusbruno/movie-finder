@@ -9,7 +9,7 @@ import {
 } from "@/lib/tmdb";
 import { enrichMoviesWithRatings, getMovieRatings } from "@/lib/ratings";
 import { getMovieKeywordList } from "@/lib/keywords";
-import { getMovieWatchProviders } from "@/lib/watch-providers";
+import { DEFAULT_WATCH_REGION, getMovieWatchProviders } from "@/lib/watch-providers";
 import { attachMatchExplanations, explainSingleRefMatch } from "@/lib/match-explanation";
 import { isAnthropicAvailable } from "@/lib/anthropic-client";
 import { MovieGrid } from "@/components/movie-grid";
@@ -52,7 +52,11 @@ export default async function MovieDetailPage({
   // below - shares the same cache blend/mood search use, so a title looked
   // up elsewhere costs nothing here.
   const ownKeywordsPromise = getMovieKeywordList(movieId);
-  const watchProvidersPromise = getMovieWatchProviders(movieId);
+  // Server always fetches the default region (US) - it has no access to
+  // whatever region the visitor previously picked in localStorage; the
+  // client-side WatchProviders component notices the mismatch on mount and
+  // re-fetches for the real persisted region if it differs.
+  const watchProvidersPromise = getMovieWatchProviders(movieId, DEFAULT_WATCH_REGION);
   // A bad id 404s on every endpoint, not just getMovieDetails - if these
   // reject while getMovieDetails is still in flight below, nothing has
   // observed them yet, which Node treats as an unhandled rejection. The
@@ -152,7 +156,12 @@ export default async function MovieDetailPage({
         </div>
       </div>
 
-      <WatchProviders region={watchProviders} />
+      <WatchProviders
+        mediaType="movie"
+        id={movieId}
+        initialRegion={DEFAULT_WATCH_REGION}
+        initialData={watchProviders}
+      />
 
       {topCast.length > 0 && (
         <div className="flex flex-col gap-4">

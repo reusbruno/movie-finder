@@ -9,7 +9,7 @@ import {
 } from "@/lib/tmdb";
 import { enrichTVWithRatings, getTVRatings } from "@/lib/ratings";
 import { getTVKeywordList } from "@/lib/keywords";
-import { getTVWatchProviders } from "@/lib/watch-providers";
+import { DEFAULT_WATCH_REGION, getTVWatchProviders } from "@/lib/watch-providers";
 import { attachMatchExplanations, explainSingleRefMatch } from "@/lib/match-explanation";
 import { isAnthropicAvailable } from "@/lib/anthropic-client";
 import { MovieGrid } from "@/components/movie-grid";
@@ -44,7 +44,10 @@ export default async function SeriesDetailPage({
   const ratingsPromise = getTVRatings(tvId);
   const creditsPromise = getTVCredits(tvId);
   const ownKeywordsPromise = getTVKeywordList(tvId);
-  const watchProvidersPromise = getTVWatchProviders(tvId);
+  // See src/app/movies/[id]/page.tsx - server always fetches the default
+  // region; the client component re-fetches if the visitor's persisted
+  // region differs.
+  const watchProvidersPromise = getTVWatchProviders(tvId, DEFAULT_WATCH_REGION);
   // See src/app/movies/[id]/page.tsx - a bad id 404s on every endpoint, so
   // pre-empt a false "unhandled rejection" if these settle before
   // getTVDetails below; the real error is still observed via Promise.all.
@@ -143,7 +146,12 @@ export default async function SeriesDetailPage({
         </div>
       </div>
 
-      <WatchProviders region={watchProviders} />
+      <WatchProviders
+        mediaType="tv"
+        id={tvId}
+        initialRegion={DEFAULT_WATCH_REGION}
+        initialData={watchProviders}
+      />
 
       {topCast.length > 0 && (
         <div className="flex flex-col gap-4">
