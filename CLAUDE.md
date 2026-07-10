@@ -27,6 +27,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Bebas Neue (`font-display`) is reserved for page titles only** - the browse page's hero heading ("What are you in the mood for?"), not results headers, section labels, or any other content text. Results headers (mood/blend/search/filtered-browse) are content labels, not titles: normal weight, quiet color, `{context} · N results` shape - see `resultsHeaderContext`/`heading` in `media-explorer.tsx`.
 - Explicit 5-size type scale in `globals.css` (`xs 12 / sm 14 / base 16 / lg 20 / xl 32`) - every text size in the app should map to one of these, no arbitrary `text-[Npx]`.
 
+## Deployment notes
+
+- **Target is Vercel, serverless (Hobby tier, friends-scale testing).** Each invocation may land on a fresh function instance, so the in-memory caches (`ratings.ts`, `keywords.ts`, `watch-providers.ts` - all the same TTL'd-`Map` shape) don't persist across requests the way they do in a long-running `next dev`/`next start` process.
+- **Known and accepted, not a bug**: a cache miss just re-fetches from the upstream API instead of hitting a warm in-memory entry. OMDb's free-tier rate limit is the resource most likely to feel this first (it's already the most rate-limited API this app calls); `ratings.ts` already degrades any fetch failure to "no ratings available" rather than erroring, so a quota bump shows up as missing scores, not a broken page.
+- Revisit with real persistent caching (e.g. Vercel KV) only if this actually bites in practice - not preemptively.
+
 ## Build history and known follow-ups
 
 See the `build-log` skill (`.claude/skills/build-log/SKILL.md`) for the full Phase 1/Phase 2 build plan (all shipped) and the current list of known follow-ups. Not loaded by default - ask about project status/roadmap/what's-left/known-issues to pull it in, or read the file directly.
