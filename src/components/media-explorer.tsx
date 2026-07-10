@@ -150,6 +150,7 @@ export function MediaExplorer<TSortBy extends string>({
   function clearMood() {
     moodAbortRef.current?.abort();
     moodRequestIdRef.current += 1;
+    setMoodInput("");
     setMoodQuery("");
     setMoodResults(null);
     setMoodInterpretation(null);
