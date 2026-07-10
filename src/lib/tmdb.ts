@@ -158,7 +158,8 @@ export const MOVIE_SORT_OPTIONS = [
 
 export type MovieSortBy = (typeof MOVIE_SORT_OPTIONS)[number];
 
-// TMDB's /discover/movie endpoint rejects page > 500 regardless of total_pages.
+// TMDB rejects page > 500 on its paginated list endpoints (discover, popular,
+// ...) regardless of total_pages.
 export const TMDB_MAX_DISCOVER_PAGE = 500;
 
 const DEFAULT_MIN_VOTE_COUNT = 50;

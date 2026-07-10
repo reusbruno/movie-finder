@@ -55,6 +55,10 @@ export interface MediaExplorerConfig<TSortBy extends string> {
   discoverEndpoint: string;
   moodSearchEndpoint: string;
   vibeBlendEndpoint: string;
+  // TMDB's own paginated popular endpoint - lets the Popular grid load more
+  // pages the same way Discover mode does, rather than being capped at
+  // whatever the server rendered for page 1.
+  popularEndpoint: string;
   searchPlaceholder: string;
   sortOptions: { value: TSortBy; label: string }[];
   defaultSort: TSortBy;
@@ -67,10 +71,15 @@ export interface MediaExplorerConfig<TSortBy extends string> {
 
 export function MediaExplorer<TSortBy extends string>({
   initialItems,
+  initialTotalPages,
   genres,
   config,
 }: {
   initialItems: MovieWithRatings[];
+  // TMDB's total_pages for the server-rendered page 1 - seeds
+  // popularTotalPages so Load More knows immediately whether there's
+  // anything more to fetch, without a wasted first click.
+  initialTotalPages: number;
   genres: TMDBGenre[];
   config: MediaExplorerConfig<TSortBy>;
 }) {
@@ -80,6 +89,7 @@ export function MediaExplorer<TSortBy extends string>({
     discoverEndpoint,
     moodSearchEndpoint,
     vibeBlendEndpoint,
+    popularEndpoint,
     searchPlaceholder,
     sortOptions,
     defaultSort,
@@ -186,6 +196,21 @@ export function MediaExplorer<TSortBy extends string>({
   const [discoverError, setDiscoverError] = useState<string | null>(null);
   const discoverAbortRef = useRef<AbortController | null>(null);
   const discoverRequestIdRef = useRef(0);
+
+  // Page 1 is always the server-rendered initialItems - no fetch, no
+  // pending state, same as before. Load More appends subsequent pages the
+  // same way loadMoreDiscover does; only that accumulation is new here.
+  const [popularItems, setPopularItems] = useState<MovieWithRatings[]>(initialItems);
+  const [popularPage, setPopularPage] = useState(1);
+  const [popularTotalPages, setPopularTotalPages] = useState(initialTotalPages);
+  const [popularLoadingMore, setPopularLoadingMore] = useState(false);
+  // Deliberately NOT wired into the shared `error` variable below - that
+  // would replace the whole (already successfully server-rendered) grid
+  // with red text over a single failed Load More click. Rendered as a
+  // quiet note near the button instead, same category as surpriseMessage.
+  const [popularError, setPopularError] = useState<string | null>(null);
+  const popularAbortRef = useRef<AbortController | null>(null);
+  const popularRequestIdRef = useRef(0);
 
   const router = useRouter();
   const [surpriseLoading, setSurpriseLoading] = useState(false);
@@ -691,6 +716,45 @@ export function MediaExplorer<TSortBy extends string>({
     }
   }
 
+  async function loadMorePopular() {
+    popularAbortRef.current?.abort();
+    const controller = new AbortController();
+    popularAbortRef.current = controller;
+    const requestId = ++popularRequestIdRef.current;
+
+    const nextPage = popularPage + 1;
+
+    setPopularLoadingMore(true);
+    setPopularError(null);
+
+    try {
+      const response = await fetch(`${popularEndpoint}?page=${nextPage}`, {
+        signal: controller.signal,
+      });
+      const data = await response.json();
+
+      if (requestId !== popularRequestIdRef.current) return;
+
+      if (!response.ok) {
+        throw new Error(data.error ?? `Failed to load ${itemsLabel}`);
+      }
+
+      setPopularItems((prev) => [...prev, ...data.results]);
+      setPopularPage(nextPage);
+      setPopularTotalPages(data.total_pages);
+    } catch (err) {
+      if (requestId !== popularRequestIdRef.current) return;
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      setPopularError(
+        err instanceof Error ? err.message : `Failed to load ${itemsLabel}`
+      );
+    } finally {
+      if (requestId === popularRequestIdRef.current) {
+        setPopularLoadingMore(false);
+      }
+    }
+  }
+
   const items =
     mode === "blend"
       ? (blendResults ?? [])
@@ -700,7 +764,7 @@ export function MediaExplorer<TSortBy extends string>({
           ? (searchResults ?? [])
           : mode === "discover"
             ? (discoverResults ?? [])
-            : initialItems;
+            : popularItems;
 
   // True only for "the request for this mode hasn't resolved even once
   // yet" (its results state is still null) - not for "resolved with zero
@@ -752,11 +816,26 @@ export function MediaExplorer<TSortBy extends string>({
             : null;
   // Blend and mood results aren't paginated in v1 - both are one-shot
   // queries against a fixed candidate pool, not a stable filter set to page
-  // through.
+  // through. Discover and Popular both page through TMDB's own paginated
+  // endpoints, so both get a real "Load more".
   const canLoadMore =
-    mode === "discover" &&
-    discoverPage < discoverTotalPages &&
-    discoverPage < TMDB_MAX_DISCOVER_PAGE;
+    (mode === "discover" &&
+      discoverPage < discoverTotalPages &&
+      discoverPage < TMDB_MAX_DISCOVER_PAGE) ||
+    (mode === "popular" &&
+      popularPage < popularTotalPages &&
+      popularPage < TMDB_MAX_DISCOVER_PAGE);
+  const loadingMore =
+    mode === "discover"
+      ? discoverLoadingMore
+      : mode === "popular"
+        ? popularLoadingMore
+        : false;
+
+  function handleLoadMore() {
+    if (mode === "discover") loadMoreDiscover();
+    else if (mode === "popular") loadMorePopular();
+  }
 
   const activeFilterCount =
     (selectedGenres.length > 0 ? 1 : 0) +
@@ -968,12 +1047,15 @@ export function MediaExplorer<TSortBy extends string>({
           {canLoadMore && (
             <button
               type="button"
-              onClick={loadMoreDiscover}
-              disabled={discoverLoadingMore}
+              onClick={handleLoadMore}
+              disabled={loadingMore}
               className="mx-auto rounded-full border border-black/[.08] px-5 py-2 text-sm font-medium transition-colors hover:border-foreground/30 hover:text-foreground disabled:opacity-50 dark:border-white/[.145]"
             >
-              {discoverLoadingMore ? "Loading…" : "Load more"}
+              {loadingMore ? "Loading…" : "Load more"}
             </button>
+          )}
+          {mode === "popular" && popularError && (
+            <p className="text-center text-xs text-foreground/50">{popularError}</p>
           )}
         </>
       )}

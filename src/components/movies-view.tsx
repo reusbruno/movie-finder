@@ -19,6 +19,7 @@ const MOVIES_CONFIG: MediaExplorerConfig<MovieSortBy> = {
   discoverEndpoint: "/api/movies/discover",
   moodSearchEndpoint: "/api/movies/mood-search",
   vibeBlendEndpoint: "/api/movies/vibe-blend",
+  popularEndpoint: "/api/movies/popular",
   searchPlaceholder: "Search movies…",
   sortOptions: [
     { value: "popularity.desc", label: "Popularity" },
@@ -33,10 +34,12 @@ const MOVIES_CONFIG: MediaExplorerConfig<MovieSortBy> = {
 
 export function MoviesView({
   initialMovies,
+  initialTotalPages,
   genres,
   initialPeople,
 }: {
   initialMovies: MovieWithRatings[];
+  initialTotalPages: number;
   genres: TMDBGenre[];
   initialPeople: TMDBPerson[];
 }) {
@@ -64,6 +67,7 @@ export function MoviesView({
       {tab === "movies" ? (
         <MediaExplorer
           initialItems={initialMovies}
+          initialTotalPages={initialTotalPages}
           genres={genres}
           config={MOVIES_CONFIG}
         />

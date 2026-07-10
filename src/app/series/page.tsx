@@ -11,6 +11,7 @@ const SERIES_CONFIG: MediaExplorerConfig<TVSortBy> = {
   discoverEndpoint: "/api/tv/discover",
   moodSearchEndpoint: "/api/tv/mood-search",
   vibeBlendEndpoint: "/api/tv/vibe-blend",
+  popularEndpoint: "/api/tv/popular",
   searchPlaceholder: "Search series…",
   sortOptions: [
     { value: "popularity.desc", label: "Popularity" },
@@ -40,6 +41,7 @@ export default async function SeriesPage() {
   return (
     <MediaExplorer
       initialItems={initialShows}
+      initialTotalPages={popular.total_pages}
       genres={genres.genres}
       config={SERIES_CONFIG}
     />

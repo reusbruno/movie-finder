@@ -13,6 +13,7 @@ export default async function MoviesPage() {
   return (
     <MoviesView
       initialMovies={initialMovies}
+      initialTotalPages={popular.total_pages}
       genres={genres.genres}
       initialPeople={popularPeople.results}
     />
