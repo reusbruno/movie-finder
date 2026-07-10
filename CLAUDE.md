@@ -20,6 +20,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Route handlers translate client errors (missing/invalid params) to `400`, and propagate the upstream API's status code on failure rather than collapsing everything to `500`.
 - Styling is Tailwind v4 via `@tailwindcss/postcss` (see `postcss.config.mjs`, `src/app/globals.css`); no component library is in use yet.
 
+## Design notes
+
+- **Reference is Letterboxd/Apple TV+ quiet chrome.** Default to restraint - most controls are small, outlined, and muted (`text-foreground/60`-ish); loudness is spent deliberately, not by default.
+- **Gold (`--accent`, `bg-accent`/`text-accent-foreground`) is reserved for exactly one primary action per screen state** - not tied to a specific button. On the browse page's hero (`src/components/hero-search.tsx`), that's Find by default and Blend once swapped into blend view; they never coexist, so "one gold button on screen" holds automatically as the state changes. Small passive count badges (e.g. `FilterPanel`'s active-filter count) are a different visual category - status, not a competing call-to-action - and can still use accent color.
+- **Bebas Neue (`font-display`) is reserved for page titles only** - the browse page's hero heading ("What are you in the mood for?"), not results headers, section labels, or any other content text. Results headers (mood/blend/search/filtered-browse) are content labels, not titles: normal weight, quiet color, `{context} · N results` shape - see `resultsHeaderContext`/`heading` in `media-explorer.tsx`.
+- Explicit 5-size type scale in `globals.css` (`xs 12 / sm 14 / base 16 / lg 20 / xl 32`) - every text size in the app should map to one of these, no arbitrary `text-[Npx]`.
+
 ## Build history and known follow-ups
 
 See the `build-log` skill (`.claude/skills/build-log/SKILL.md`) for the full Phase 1/Phase 2 build plan (all shipped) and the current list of known follow-ups. Not loaded by default - ask about project status/roadmap/what's-left/known-issues to pull it in, or read the file directly.

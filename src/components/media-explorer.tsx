@@ -7,8 +7,10 @@ import type { MovieWithRatings } from "@/lib/ratings";
 import { MovieGrid } from "@/components/movie-grid";
 import { GenreFilter } from "@/components/genre-filter";
 import { FilterPanel } from "@/components/filter-panel";
-import { TitlePicker, type PickedTitle } from "@/components/title-picker";
+import type { PickedTitle } from "@/components/title-picker";
 import { SkeletonGrid } from "@/components/skeletons";
+import { HeroSearch } from "@/components/hero-search";
+import { InterpretationChips } from "@/components/interpretation-chips";
 
 const SEARCH_DEBOUNCE_MS = 400;
 const MIN_IMDB_OPTIONS = ["", "6", "7", "8", "9"] as const;
@@ -124,6 +126,12 @@ export function MediaExplorer<TSortBy extends string>({
   >(null);
   const [discoverPage, setDiscoverPage] = useState(1);
   const [discoverTotalPages, setDiscoverTotalPages] = useState(1);
+  // TMDB's own total match count (not just how many are loaded so far) -
+  // discover is the one mode with "Load more" pagination, so items.length
+  // would only ever say "8 results" even when hundreds match. Mood/blend/
+  // search aren't paginated in this UI, so items.length is already the
+  // true total for those.
+  const [discoverTotalResults, setDiscoverTotalResults] = useState(0);
   const [discoverLoading, setDiscoverLoading] = useState(false);
   const [discoverLoadingMore, setDiscoverLoadingMore] = useState(false);
   const [discoverError, setDiscoverError] = useState<string | null>(null);
@@ -136,6 +144,13 @@ export function MediaExplorer<TSortBy extends string>({
   // an expected, calm outcome (not a failure), so it renders as a plain
   // note rather than the red error text a fetch failure gets.
   const [surpriseMessage, setSurpriseMessage] = useState<string | null>(null);
+
+  // Pure UI state for the hero redesign - which input the hero card shows,
+  // and whether the (unchanged) search+filters row is visible. Neither
+  // touches the actual query/genre/sort/rating state below, so collapsing
+  // the filters row never clears an active filter - see toggleFilters.
+  const [heroView, setHeroView] = useState<"mood" | "blend">("mood");
+  const [filtersRevealed, setFiltersRevealed] = useState(false);
 
   const trimmedQuery = query.trim();
   const filtersActive =
@@ -466,6 +481,7 @@ export function MediaExplorer<TSortBy extends string>({
         setDiscoverResults(data.results);
         setDiscoverPage(1);
         setDiscoverTotalPages(data.total_pages);
+        setDiscoverTotalResults(data.total_results ?? data.results.length);
       } catch (err) {
         if (requestId !== discoverRequestIdRef.current) return;
         if (err instanceof DOMException && err.name === "AbortError") return;
@@ -511,6 +527,7 @@ export function MediaExplorer<TSortBy extends string>({
       setDiscoverResults((prev) => [...(prev ?? []), ...data.results]);
       setDiscoverPage(nextPage);
       setDiscoverTotalPages(data.total_pages);
+      setDiscoverTotalResults(data.total_results ?? data.results.length);
     } catch (err) {
       if (requestId !== discoverRequestIdRef.current) return;
       if (err instanceof DOMException && err.name === "AbortError") return;
@@ -555,19 +572,13 @@ export function MediaExplorer<TSortBy extends string>({
             : false;
 
   const moodYearRangeLabel = formatYearRange(moodInterpretation?.yearRange);
-
-  const heading =
-    mode === "blend"
-      ? blendCaption
-        ? `Blending: ${blendCaption.titleA} + ${blendCaption.titleB}`
-        : "Blending…"
-      : mode === "mood"
-        ? `Mood: "${moodQuery}"`
-        : mode === "search"
-          ? `Results for "${trimmedQuery}"`
-          : mode === "discover"
-            ? "Filtered results"
-            : popularHeading;
+  const moodInterpretationLabels = moodInterpretation
+    ? [
+        ...moodInterpretation.genreNames,
+        ...moodInterpretation.keywordTerms,
+        ...(moodYearRangeLabel ? [moodYearRangeLabel] : []),
+      ]
+    : [];
 
   const loading =
     mode === "blend"
@@ -602,182 +613,175 @@ export function MediaExplorer<TSortBy extends string>({
     (sortBy !== defaultSort ? 1 : 0) +
     (minImdb ? 1 : 0) +
     (minRt ? 1 : 0);
+  // Shown on the collapsed "Browse with filters" entry point so results
+  // never look mysteriously filtered/searched with no visible cause once
+  // the row that set them is hidden - includes the quick-search query too,
+  // not just genre/sort/rating, since a lingering query is just as "why do
+  // these results look like this" as an active genre filter.
+  const hiddenFilterSignal = activeFilterCount + (trimmedQuery !== "" ? 1 : 0);
+
+  // Results headers are content labels, not page titles - Bebas Neue is
+  // reserved for the latter (the hero heading), so every mode here renders
+  // in normal weight. Each mode keeps its own existing context text
+  // (unchanged copy), just with "· N results" appended once real results
+  // have actually arrived - blend's own "Blending…" placeholder and every
+  // other mode's resultsPending state already read fine without a count.
+  const resultsHeaderContext =
+    mode === "blend"
+      ? blendCaption
+        ? `Blending: ${blendCaption.titleA} + ${blendCaption.titleB}`
+        : "Blending…"
+      : mode === "mood"
+        ? moodQuery.charAt(0).toUpperCase() + moodQuery.slice(1)
+        : mode === "search"
+          ? `Results for "${trimmedQuery}"`
+          : mode === "discover"
+            ? "Filtered"
+            : popularHeading;
+  const resultsCount = mode === "discover" ? discoverTotalResults : items.length;
+  const showResultsCount = mode !== "popular" && !resultsPending && !error;
+  const heading = showResultsCount
+    ? `${resultsHeaderContext} · ${resultsCount} results`
+    : resultsHeaderContext;
+
+  function handleSwitchToBlend() {
+    setHeroView("blend");
+  }
+
+  // Clearing blend here (not just switching the hero's own view back to
+  // mood) keeps heroView and the results mode in agreement - otherwise the
+  // hero would show the mood input while the grid below still said
+  // "Blending: X + Y", which is exactly the "two now contradicting the
+  // same signal" bug pattern this app has already hit once before.
+  function handleBackToMood() {
+    clearBlend();
+    setHeroView("mood");
+  }
+
+  function handleToggleFilters() {
+    setFiltersRevealed((prev) => !prev);
+  }
 
   return (
     <div className="flex flex-1 flex-col gap-6 px-6 py-8">
-      <div className="flex flex-col gap-2">
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            submitMood(moodInput);
-          }}
-          className="flex w-full max-w-md flex-wrap items-center gap-2"
-        >
-          <input
-            type="text"
-            value={moodInput}
-            onChange={(event) => setMoodInput(event.target.value)}
-            placeholder="Describe a mood… e.g. slow melancholic sci-fi"
-            aria-label="Mood search"
-            disabled={!moodAvailable}
-            className="min-w-0 flex-1 rounded-full border border-black/[.08] bg-transparent px-4 py-2 text-sm outline-none focus:border-foreground/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/[.145]"
-          />
-          <button
-            type="submit"
-            disabled={!moodAvailable || !moodInput.trim()}
-            className="rounded-full border border-black/[.08] px-4 py-2 text-sm font-medium transition-colors hover:border-foreground/30 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/[.145]"
-          >
-            {moodLoading ? "Thinking…" : "Search"}
-          </button>
-        </form>
-        {moodAvailable === false && (
-          <p className="text-xs text-foreground/50">Mood search — coming soon</p>
-        )}
-        {mode === "mood" && !moodLoading && (
-          <div className="flex flex-wrap items-center gap-2 text-xs text-foreground/60">
-            {moodInterpretation && (
-              <span>
-                Interpreted as:{" "}
-                {[
-                  ...moodInterpretation.genreNames,
-                  ...moodInterpretation.keywordTerms,
-                  ...(moodYearRangeLabel ? [moodYearRangeLabel] : []),
-                ].join(", ") || "no specific filters"}
-              </span>
-            )}
-            <button type="button" onClick={clearMood} className="underline">
-              Clear
-            </button>
-          </div>
-        )}
-      </div>
-      <div className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <TitlePicker
-            searchEndpoint={searchEndpoint}
-            placeholder="First title…"
-            selected={blendTitleA}
-            onSelect={setBlendTitleA}
-            onClear={() => setBlendTitleA(null)}
-          />
-          <span className="text-sm text-foreground/50">+</span>
-          <TitlePicker
-            searchEndpoint={searchEndpoint}
-            placeholder="Second title…"
-            selected={blendTitleB}
-            onSelect={setBlendTitleB}
-            onClear={() => setBlendTitleB(null)}
-          />
-          <button
-            type="button"
-            onClick={submitBlend}
-            disabled={
-              !blendTitleA || !blendTitleB || blendTitleA.id === blendTitleB.id
-            }
-            className="rounded-full border border-black/[.08] px-4 py-2 text-sm font-medium transition-colors hover:border-foreground/30 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/[.145]"
-          >
-            {blendLoading ? "Blending…" : "Blend"}
+      <HeroSearch
+        heroView={heroView}
+        onSwitchToBlend={handleSwitchToBlend}
+        onBackToMood={handleBackToMood}
+        moodInput={moodInput}
+        onMoodInputChange={setMoodInput}
+        onSubmitMood={() => submitMood(moodInput)}
+        moodAvailable={moodAvailable}
+        moodLoading={moodLoading}
+        searchEndpoint={searchEndpoint}
+        blendTitleA={blendTitleA}
+        blendTitleB={blendTitleB}
+        onSelectBlendA={setBlendTitleA}
+        onClearBlendA={() => setBlendTitleA(null)}
+        onSelectBlendB={setBlendTitleB}
+        onClearBlendB={() => setBlendTitleB(null)}
+        onSubmitBlend={submitBlend}
+        blendLoading={blendLoading}
+        onSurpriseMe={handleSurpriseMe}
+        surpriseLoading={surpriseLoading}
+        onToggleFilters={handleToggleFilters}
+        filtersRevealed={filtersRevealed}
+        filtersBadgeCount={hiddenFilterSignal}
+      />
+
+      {mode === "mood" && !moodLoading && moodInterpretation && (
+        <InterpretationChips labels={moodInterpretationLabels} onClear={clearMood} />
+      )}
+      {mode === "blend" && !blendLoading && (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-foreground/60">
+          <button type="button" onClick={clearBlend} className="underline">
+            Clear
           </button>
         </div>
-        {blendTitleA && blendTitleB && blendTitleA.id === blendTitleB.id && (
-          <p className="text-xs text-foreground/50">Pick two different titles to blend</p>
-        )}
-        {mode === "blend" && !blendLoading && (
-          <div className="flex flex-wrap items-center gap-2 text-xs text-foreground/60">
-            <button type="button" onClick={clearBlend} className="underline">
-              Clear
-            </button>
-          </div>
-        )}
-      </div>
-      <div className="flex flex-wrap items-center gap-3">
-        <input
-          type="search"
-          value={query}
-          onChange={(event) => updateQuery(event.target.value)}
-          placeholder={searchPlaceholder}
-          aria-label={searchPlaceholder.replace("…", "")}
-          className="w-full max-w-md rounded-full border border-black/[.08] bg-transparent px-4 py-2 text-sm outline-none focus:border-foreground/40 dark:border-white/[.145]"
-        />
-        <FilterPanel activeCount={activeFilterCount}>
-          <GenreFilter
-            genres={genres}
-            selectedGenreIds={selectedGenres}
-            onToggle={toggleGenre}
-          />
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="flex items-center gap-2 text-xs">
-              Sort by
-              <select
-                value={sortBy}
-                onChange={(event) => updateSortBy(event.target.value as TSortBy)}
-                className="rounded-md border border-black/[.08] bg-transparent px-2 py-1 text-foreground outline-none focus:border-foreground/40 dark:border-white/[.145]"
-              >
-                {sortOptions.map((option) => (
-                  <option
-                    key={option.value}
-                    value={option.value}
-                    className="bg-background text-foreground"
-                  >
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex items-center gap-2 text-xs">
-              Min IMDb
-              <select
-                value={minImdb}
-                onChange={(event) => updateMinImdb(event.target.value)}
-                className="rounded-md border border-black/[.08] bg-transparent px-2 py-1 text-foreground outline-none focus:border-foreground/40 dark:border-white/[.145]"
-              >
-                {MIN_IMDB_OPTIONS.map((value) => (
-                  <option
-                    key={value}
-                    value={value}
-                    className="bg-background text-foreground"
-                  >
-                    {value ? `${value}+` : "Any"}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex items-center gap-2 text-xs">
-              Min RT
-              <select
-                value={minRt}
-                onChange={(event) => updateMinRt(event.target.value)}
-                className="rounded-md border border-black/[.08] bg-transparent px-2 py-1 text-foreground outline-none focus:border-foreground/40 dark:border-white/[.145]"
-              >
-                {MIN_RT_OPTIONS.map((value) => (
-                  <option
-                    key={value}
-                    value={value}
-                    className="bg-background text-foreground"
-                  >
-                    {value ? `${value}%+` : "Any"}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          {filterFootnote}
-        </FilterPanel>
-        <button
-          type="button"
-          onClick={handleSurpriseMe}
-          disabled={surpriseLoading}
-          className="rounded-full border border-black/[.08] px-4 py-2 text-sm font-medium transition-colors hover:border-foreground/30 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/[.145]"
-        >
-          {surpriseLoading ? "Picking…" : "Surprise me"}
-        </button>
-      </div>
+      )}
       {surpriseMessage && (
         <p className="text-xs text-foreground/50">{surpriseMessage}</p>
       )}
 
+      {filtersRevealed && (
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => updateQuery(event.target.value)}
+            placeholder={searchPlaceholder}
+            aria-label={searchPlaceholder.replace("…", "")}
+            className="w-full max-w-md rounded-full border border-black/[.08] bg-transparent px-4 py-2 text-sm outline-none focus:border-foreground/40 dark:border-white/[.145]"
+          />
+          <FilterPanel activeCount={activeFilterCount}>
+            <GenreFilter
+              genres={genres}
+              selectedGenreIds={selectedGenres}
+              onToggle={toggleGenre}
+            />
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-2 text-xs">
+                Sort by
+                <select
+                  value={sortBy}
+                  onChange={(event) => updateSortBy(event.target.value as TSortBy)}
+                  className="rounded-md border border-black/[.08] bg-transparent px-2 py-1 text-foreground outline-none focus:border-foreground/40 dark:border-white/[.145]"
+                >
+                  {sortOptions.map((option) => (
+                    <option
+                      key={option.value}
+                      value={option.value}
+                      className="bg-background text-foreground"
+                    >
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex items-center gap-2 text-xs">
+                Min IMDb
+                <select
+                  value={minImdb}
+                  onChange={(event) => updateMinImdb(event.target.value)}
+                  className="rounded-md border border-black/[.08] bg-transparent px-2 py-1 text-foreground outline-none focus:border-foreground/40 dark:border-white/[.145]"
+                >
+                  {MIN_IMDB_OPTIONS.map((value) => (
+                    <option
+                      key={value}
+                      value={value}
+                      className="bg-background text-foreground"
+                    >
+                      {value ? `${value}+` : "Any"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex items-center gap-2 text-xs">
+                Min RT
+                <select
+                  value={minRt}
+                  onChange={(event) => updateMinRt(event.target.value)}
+                  className="rounded-md border border-black/[.08] bg-transparent px-2 py-1 text-foreground outline-none focus:border-foreground/40 dark:border-white/[.145]"
+                >
+                  {MIN_RT_OPTIONS.map((value) => (
+                    <option
+                      key={value}
+                      value={value}
+                      className="bg-background text-foreground"
+                    >
+                      {value ? `${value}%+` : "Any"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {filterFootnote}
+          </FilterPanel>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
-        <h2 className="font-display text-lg tracking-wide">{heading}</h2>
+        <h2 className="text-sm font-medium text-foreground/70">{heading}</h2>
         {loading && <span className="text-sm text-foreground/60">Loading…</span>}
       </div>
 
