@@ -241,3 +241,27 @@ export async function resolveMoodFilters(
     },
   };
 }
+
+// Two AND'd genres (see discoverMovies/discoverTV's genreMatchMode) can
+// intersect to a much smaller - and differently-flavored - pool than
+// intended: "Comedy" + "Family" for a "cozy feel-good comedy" mood skews
+// toward kids' animation, since TMDB's Family genre leans heavily
+// children's, not "comedy that happens to also be gentle/wholesome". If the
+// strict AND undershoots, retry with just the primary genre dropped down to
+// one (still a hard filter, just not doubly so) rather than falling back to
+// an OR across genres, which would reintroduce the mismatched-genre bug the
+// AND mode itself exists to fix.
+const MIN_MOOD_RESULTS = 5;
+
+export async function discoverWithGenreFallback<T extends { results: unknown[] }>(
+  discover: (genreIds: number[]) => Promise<T>,
+  genreIds: number[]
+): Promise<T & { appliedGenreIds: number[] }> {
+  const results = await discover(genreIds);
+  if (genreIds.length > 1 && results.results.length < MIN_MOOD_RESULTS) {
+    const narrowed = genreIds.slice(0, 1);
+    const retry = await discover(narrowed);
+    return { ...retry, appliedGenreIds: narrowed };
+  }
+  return { ...results, appliedGenreIds: genreIds };
+}

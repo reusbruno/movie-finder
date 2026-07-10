@@ -11,6 +11,7 @@ import {
   interpretMoodQuery,
   isMoodSearchAvailable,
   resolveMoodFilters,
+  discoverWithGenreFallback,
   MoodSearchError,
 } from "@/lib/mood-search";
 import { attachMatchExplanations, explainMoodMatch } from "@/lib/match-explanation";
@@ -55,15 +56,19 @@ export async function POST(request: NextRequest) {
       ? (resolved.sortBy as TVSortBy)
       : "popularity.desc";
 
-    const results = await discoverTV({
-      genreIds: resolved.genreIds,
-      keywordIds: resolved.keywordIds,
-      sortBy,
-      yearRange: resolved.yearRange,
-      // See src/app/api/movies/mood-search/route.ts - genre is a hard
-      // filter for mood search, unlike the browse page's OR checkboxes.
-      genreMatchMode: "all",
-    });
+    const { appliedGenreIds, ...results } = await discoverWithGenreFallback(
+      (genreIds) =>
+        discoverTV({
+          genreIds,
+          keywordIds: resolved.keywordIds,
+          sortBy,
+          yearRange: resolved.yearRange,
+          // See src/app/api/movies/mood-search/route.ts - genre is a hard
+          // filter for mood search, unlike the browse page's OR checkboxes.
+          genreMatchMode: "all",
+        }),
+      resolved.genreIds
+    );
     const withExplanations = await attachMatchExplanations(
       results.results,
       "tv",
@@ -72,11 +77,14 @@ export async function POST(request: NextRequest) {
       explainMoodMatch
     );
     const enriched = await enrichTVWithRatings(withExplanations);
+    const appliedGenreNames = appliedGenreIds
+      .map((id) => resolved.genreNames.get(id))
+      .filter((name): name is string => name !== undefined);
 
     return NextResponse.json({
       ...results,
       results: enriched,
-      interpretation: resolved.interpretation,
+      interpretation: { ...resolved.interpretation, genreNames: appliedGenreNames },
     });
   } catch (error) {
     if (error instanceof MoodSearchError) {

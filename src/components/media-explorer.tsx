@@ -8,6 +8,7 @@ import { MovieGrid } from "@/components/movie-grid";
 import { GenreFilter } from "@/components/genre-filter";
 import { FilterPanel } from "@/components/filter-panel";
 import { TitlePicker, type PickedTitle } from "@/components/title-picker";
+import { SkeletonGrid } from "@/components/skeletons";
 
 const SEARCH_DEBOUNCE_MS = 400;
 const MIN_IMDB_OPTIONS = ["", "6", "7", "8", "9"] as const;
@@ -521,6 +522,25 @@ export function MediaExplorer<TSortBy extends string>({
             ? (discoverResults ?? [])
             : initialItems;
 
+  // True only for "the request for this mode hasn't resolved even once
+  // yet" (its results state is still null) - not for "resolved with zero
+  // results" and not for "refetching over already-visible results" (e.g.
+  // changing sort after a discover grid is already showing). Popular mode
+  // always has initialItems, so it's never pending. Without this, `items`
+  // above collapses "no response yet" and "response was empty" to the same
+  // `[]`, and MovieGrid renders its permanent "No movies found." message
+  // during the loading window too - the bug this fixes.
+  const resultsPending =
+    mode === "blend"
+      ? blendResults === null
+      : mode === "mood"
+        ? moodResults === null
+        : mode === "search"
+          ? searchResults === null
+          : mode === "discover"
+            ? discoverResults === null
+            : false;
+
   const heading =
     mode === "blend"
       ? blendCaption
@@ -746,6 +766,8 @@ export function MediaExplorer<TSortBy extends string>({
 
       {error ? (
         <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+      ) : resultsPending ? (
+        <SkeletonGrid />
       ) : (
         <>
           <div

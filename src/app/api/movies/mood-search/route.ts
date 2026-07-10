@@ -11,6 +11,7 @@ import {
   interpretMoodQuery,
   isMoodSearchAvailable,
   resolveMoodFilters,
+  discoverWithGenreFallback,
   MoodSearchError,
 } from "@/lib/mood-search";
 import { attachMatchExplanations, explainMoodMatch } from "@/lib/match-explanation";
@@ -55,16 +56,20 @@ export async function POST(request: NextRequest) {
       ? (resolved.sortBy as MovieSortBy)
       : "popularity.desc";
 
-    const results = await discoverMovies({
-      genreIds: resolved.genreIds,
-      keywordIds: resolved.keywordIds,
-      sortBy,
-      yearRange: resolved.yearRange,
-      // A mood's genres are a hard filter (must be Sci-Fi, not just "has
-      // some genre in common"), unlike the browse page's OR-by-default
-      // genre checkboxes - see discoverMovies.
-      genreMatchMode: "all",
-    });
+    const { appliedGenreIds, ...results } = await discoverWithGenreFallback(
+      (genreIds) =>
+        discoverMovies({
+          genreIds,
+          keywordIds: resolved.keywordIds,
+          sortBy,
+          yearRange: resolved.yearRange,
+          // A mood's genres are a hard filter (must be Sci-Fi, not just
+          // "has some genre in common"), unlike the browse page's
+          // OR-by-default genre checkboxes - see discoverMovies.
+          genreMatchMode: "all",
+        }),
+      resolved.genreIds
+    );
     const withExplanations = await attachMatchExplanations(
       results.results,
       "movie",
@@ -73,11 +78,14 @@ export async function POST(request: NextRequest) {
       explainMoodMatch
     );
     const enriched = await enrichMoviesWithRatings(withExplanations);
+    const appliedGenreNames = appliedGenreIds
+      .map((id) => resolved.genreNames.get(id))
+      .filter((name): name is string => name !== undefined);
 
     return NextResponse.json({
       ...results,
       results: enriched,
-      interpretation: resolved.interpretation,
+      interpretation: { ...resolved.interpretation, genreNames: appliedGenreNames },
     });
   } catch (error) {
     if (error instanceof MoodSearchError) {
