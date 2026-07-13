@@ -15,12 +15,12 @@ const OPTIONS: { value: Locale; label: string }[] = [
 // exactly one primary action" note; the hero's Find/Blend button already
 // holds that slot.
 export function LanguageToggle() {
-  const { locale, setLocale } = useLanguage();
+  const { locale, setLocale, t } = useLanguage();
 
   return (
     <div
       role="group"
-      aria-label="Language"
+      aria-label={t.header.languageAriaLabel}
       className="inline-flex rounded-full border border-black/[.08] p-1 dark:border-white/[.145]"
     >
       {OPTIONS.map((option) => {

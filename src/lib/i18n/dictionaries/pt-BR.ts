@@ -18,6 +18,7 @@ const ptBR: Dictionary = {
     movies: "Filmes",
     series: "Séries",
     contentModeAriaLabel: "Modo de conteúdo",
+    languageAriaLabel: "Idioma",
     searchTitlesAndPeople: "Buscar títulos e pessoas",
     searchTitlesPlaceholder: "Buscar títulos…",
     people: "Pessoas",

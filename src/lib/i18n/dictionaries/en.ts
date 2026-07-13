@@ -19,6 +19,7 @@ const en = {
     movies: "Movies",
     series: "Series",
     contentModeAriaLabel: "Content mode",
+    languageAriaLabel: "Language",
     searchTitlesAndPeople: "Search titles and people",
     searchTitlesPlaceholder: "Search titles…",
     people: "People",
