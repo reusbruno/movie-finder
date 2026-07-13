@@ -87,6 +87,14 @@ export async function interpretMoodQuery(
         items: { type: "string", enum: options.genreNames },
         description:
           "Genres from the allowed list that match the mood. Empty array if none clearly fit. " +
+          "If a word in the query literally names one of the allowed genres (e.g. the query " +
+          'contains "comedy", "thriller", "horror"), that is strong evidence for including THAT ' +
+          "genre specifically - always include it, don't let surrounding tone words crowd it " +
+          "out. That said, still separately consider whether OTHER genres are also clearly " +
+          'implied by the rest of the query on top of the literal one (e.g. "cozy feel-good ' +
+          'comedy" should still resolve to Comedy AND Drama - the literal "comedy" secures ' +
+          'Comedy, while "cozy"/"feel-good" independently imply Drama). A literal genre mention ' +
+          "is a floor, not a ceiling, on how many genres you pick. " +
           'Be careful with "Family" - on TMDB it means content aimed at children (animated ' +
           "franchises, kids' movies), not just \"warm\" or \"wholesome\" in a general adult " +
           'sense. Only include it when the query explicitly signals kids/family viewing (e.g. ' +
