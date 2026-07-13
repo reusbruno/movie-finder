@@ -7,12 +7,16 @@ import {
   getTVKeywords,
   type TMDBGenre,
   type TMDBYearRange,
+  type TMDBMovie,
+  type TMDBSearchResponse,
 } from "@/lib/tmdb";
 import {
   getAnthropicClient,
   isAnthropicAvailable,
   AnthropicUnavailableError,
 } from "@/lib/anthropic-client";
+import { getMovieKeywordList, getTVKeywordList } from "@/lib/keywords";
+import { computeMatchSignals, blendSignalScore, explainMoodMatch } from "@/lib/match-explanation";
 
 export class MoodSearchError extends Error {
   constructor(
@@ -35,6 +39,10 @@ const MAX_GENRES_FROM_QUERY = 2;
 const MAX_KEYWORDS_FROM_QUERY = 5;
 const MAX_REFERENCE_TITLES = 3;
 const MAX_KEYWORDS_PER_REFERENCE_TITLE = 3;
+// Mood-relative, not a fixed "dark genres" list - see avoidGenres below. 4
+// comfortably covers a case like cozy/feel-good avoiding Thriller/Crime/
+// Horror/War without being unbounded.
+const MAX_AVOID_GENRES_FROM_QUERY = 4;
 
 export function isMoodSearchAvailable(): boolean {
   return isAnthropicAvailable();
@@ -57,6 +65,12 @@ export interface MoodInterpretation {
   referenceTitles: string[];
   sortBy: string;
   yearRange?: TMDBYearRange;
+  // Genres that would work against this mood's tone even on a candidate
+  // that satisfies the main `genres` requirement above - see the schema
+  // description below. Mood-relative by construction (resolved fresh per
+  // query, not a maintained table), so "cozy" avoids Thriller/Crime while
+  // "tense thriller" avoids Comedy/Family instead of avoiding itself.
+  avoidGenres: string[];
 }
 
 export async function interpretMoodQuery(
@@ -91,6 +105,22 @@ export async function interpretMoodQuery(
         description:
           "Up to 3 specific movie or TV titles the query explicitly names or clearly implies (e.g. 'like Arrival'). Empty array if none.",
       },
+      avoidGenres: {
+        type: "array",
+        items: { type: "string", enum: options.genreNames },
+        description:
+          "Genres from the allowed list whose presence on a candidate would work AGAINST this " +
+          "mood's tone, even if the candidate satisfies the main genre requirement above. This is " +
+          "relative to the SPECIFIC mood, not a fixed 'dark' or 'light' list - e.g. a cozy/" +
+          "feel-good mood should avoid Thriller, Crime, Horror, War (intensity/violence clash " +
+          "with cozy); a tense/dark/paranoid mood should avoid Comedy, Family, Animation (whimsy " +
+          "undercuts tension) and must NOT avoid Thriller, Crime, or Horror even though those " +
+          "sound 'dark' - they're exactly what's being asked for. Most mood queries (plot-based, " +
+          "reference-title-based, or without a strong tonal polarity) should leave this empty - " +
+          "only include a genre here when its presence would genuinely undercut this specific " +
+          "mood, not just because it's unrelated to it. Never repeat a genre already selected in " +
+          "the genres field above.",
+      },
       sortBy: {
         type: "string",
         enum: options.sortOptions,
@@ -120,7 +150,7 @@ export async function interpretMoodQuery(
         additionalProperties: false,
       },
     },
-    required: ["genres", "keywords", "referenceTitles", "sortBy"],
+    required: ["genres", "keywords", "referenceTitles", "avoidGenres", "sortBy"],
     additionalProperties: false,
   };
 
@@ -178,6 +208,10 @@ export async function interpretMoodQuery(
 export interface ResolvedMoodFilters {
   genreIds: number[];
   keywordIds: number[];
+  // Resolved the same way as genreIds - see discoverAndRankMoodPool for
+  // where this actually applies (a per-candidate ranking penalty, not a
+  // filter - see the schema description on avoidGenres above for why).
+  avoidGenreIds: number[];
   sortBy: string;
   yearRange?: TMDBYearRange;
   // Name maps for the resolved ids above - used to build per-candidate "why
@@ -204,6 +238,10 @@ export async function resolveMoodFilters(
     .map((name) => genreNameToId.get(name))
     .filter((id): id is number => id !== undefined);
   const genreNames = new Map(genreIds.map((id) => [id, genres.find((g) => g.id === id)!.name]));
+  const avoidGenreIds = (interpretation.avoidGenres ?? [])
+    .slice(0, MAX_AVOID_GENRES_FROM_QUERY)
+    .map((name) => genreNameToId.get(name))
+    .filter((id): id is number => id !== undefined);
 
   const keywordTerms = new Set<string>();
   const keywordIds = new Set<number>();
@@ -254,6 +292,7 @@ export async function resolveMoodFilters(
   return {
     genreIds,
     keywordIds: [...keywordIds],
+    avoidGenreIds,
     sortBy: interpretation.sortBy,
     yearRange: interpretation.yearRange,
     genreNames,
@@ -280,6 +319,10 @@ export async function resolveMoodFilters(
 export interface ResolvedMoodParams {
   genres: { id: number; name: string }[];
   keywords: { id: number; name: string }[];
+  // Just ids, not {id, name} pairs like genres/keywords above - never
+  // surfaced in any UI text (no "why this DOESN'T match" display), so
+  // there's no name to round-trip.
+  avoidGenreIds: number[];
   sortBy: string;
   yearRange?: TMDBYearRange;
 }
@@ -288,6 +331,7 @@ export function toResolvedMoodParams(resolved: ResolvedMoodFilters): ResolvedMoo
   return {
     genres: [...resolved.genreNames.entries()].map(([id, name]) => ({ id, name })),
     keywords: [...resolved.keywordNames.entries()].map(([id, name]) => ({ id, name })),
+    avoidGenreIds: resolved.avoidGenreIds,
     sortBy: resolved.sortBy,
     yearRange: resolved.yearRange,
   };
@@ -298,6 +342,7 @@ export function fromResolvedMoodParams(params: ResolvedMoodParams): {
   genreNames: Map<number, string>;
   keywordIds: number[];
   keywordNames: Map<number, string>;
+  avoidGenreIds: number[];
   sortBy: string;
   yearRange?: TMDBYearRange;
 } {
@@ -306,6 +351,10 @@ export function fromResolvedMoodParams(params: ResolvedMoodParams): {
     genreNames: new Map(params.genres.map((g) => [g.id, g.name])),
     keywordIds: params.keywords.map((k) => k.id),
     keywordNames: new Map(params.keywords.map((k) => [k.id, k.name])),
+    // Cached interpretations saved before this field existed (or a stale
+    // client bundle across a deploy) just default to no penalty - today's
+    // behavior, not a crash.
+    avoidGenreIds: params.avoidGenreIds ?? [],
     sortBy: params.sortBy,
     yearRange: params.yearRange,
   };
@@ -355,54 +404,155 @@ export function applyMoodFilterOverrides(
 // on vote-count threshold, so there's no real cost to relaxing more
 // readily. 10 gives a comfortable amount of variety without being so low
 // that a precise, well-populated keyword match gets discarded for no reason.
+// Now only gates the BULK pool's genre-narrowing decision below - keywords
+// no longer have a "give up and drop the filter" threshold of their own,
+// since the precision pool (below) always takes whatever it finds.
 const MIN_MOOD_RESULTS = 10;
 
-// Mood search's discover call can undershoot for two very different
-// reasons, and they don't deserve equal blame:
+// Reranking turns keywords from a filter-or-nothing switch into a ranking
+// signal, closing the "popularity.desc has no notion of tone" gap (a
+// popular-but-tonally-wrong title like Parasite or The Wolf of Wall Street
+// ranking above genuinely cozy/feel-good picks in a Comedy+Drama pool).
 //
-// - TMDB's keyword tagging for abstract tone/vibe words ("cozy",
-//   "wholesome", "feel-good") is sparse to the point of being nearly
-//   unusable as a hard filter - measured directly against the live API,
-//   individual mood keywords like these cover as few as 5-26 movies in
-//   TMDB's *entire* catalog. Even OR'd across 5 terms, that's a tiny pool,
-//   and AND-ing it with a genre collapses further still (Comedy alone:
-//   ~12,700 movies; Comedy AND [any of 5 mood keywords]: ~5).
-// - Two AND'd genres (see discoverMovies/discoverTV's genreMatchMode) can
-//   also over-narrow - "Comedy" + "Family" skews toward kids' animation,
-//   since TMDB's Family genre leans heavily children's - but genre tagging
-//   itself is comprehensive on TMDB, unlike keyword tagging, so it's a much
-//   smaller effect (Comedy AND Family, no keywords at all: ~1,746 movies).
+// A single popularity-sorted pool isn't enough to do this well: TMDB's
+// keyword tagging for abstract tone/vibe words ("cozy", "feel-good") is
+// sparse to the point of covering as few as 5-26 movies in the ENTIRE
+// catalog - measured directly against the live API - so titles that
+// genuinely carry one of these tags are often not anywhere near the top of
+// their genre by raw popularity. A single 60-candidate popularity-sorted
+// pool for "cozy feel-good comedy" turned up only ~7 genuine keyword
+// matches; reranking correctly promoted those 7 to the top, but the
+// remaining 13 "top 20" slots still had to be padded from the same
+// zero-match, high-popularity tier that includes Parasite and The Wolf of
+// Wall Street - undoing the fix by padding it right back in.
 //
-// So the fallback relaxes keywords first, genre only as a last resort:
-// keywords are dropped from the hard filter entirely (not OR'd looser -
-// even OR'd, sparse tagging still starves the pool), then genre narrows to
-// just the primary genre if it's still thin. Dropping keywords here isn't
-// losing that signal outright - attachMatchExplanations still fetches each
-// candidate's own keywords and surfaces a genuine overlap in "why this
-// match" text; this only stops REQUIRING one for inclusion.
-export async function discoverWithMoodFallback<T extends { results: unknown[] }>(
-  discover: (genreIds: number[], keywordIds: number[]) => Promise<T>,
+// So the pool is a union of two independently-fetched sets:
+// - precision: genre AND + keywords OR, as a hard filter, fetched
+//   unconditionally and taken as-is however few results it has - every
+//   genuine keyword match is worth having, there's no "too thin, give up"
+//   threshold here unlike the old keyword-drop fallback this replaces.
+// - bulk: genre only (never keyword-filtered), for volume - falls back to
+//   just the primary genre if even genre-only is too thin (MIN_MOOD_RESULTS
+//   on page 1), since two AND'd genres can over-narrow on their own
+//   (Comedy + Family skews toward kids' animation) independent of keyword
+//   sparsity.
+// Deduped by id after union; every pool member (from either set) is scored
+// against the FULL original keyword set below, so bulk-only members still
+// get credit for any keyword they happen to carry.
+const POOL_PAGES = 3;
+const MOOD_RESULTS_LIMIT = 20;
+// Same value as tmdb.ts's TOP_RATED_MIN_VOTE_COUNT, applied here regardless
+// of sort (not just for vote_average.desc) - a pool candidate's genre/
+// keyword tagging (and its vote_average, used as a rerank tiebreaker) isn't
+// trustworthy signal below a real vote base. Verified directly against the
+// live API for both regression cases: Science Fiction+Drama keeps 291
+// candidates at this threshold, Comedy+Drama keeps 1,590 - comfortably
+// enough for a pool either way, precision set included.
+export const POOL_MIN_VOTE_COUNT = 200;
+
+async function fetchPoolPages(
+  discover: (genreIds: number[], keywordIds: number[], page: number) => Promise<TMDBSearchResponse>,
   genreIds: number[],
   keywordIds: number[]
-): Promise<T & { appliedGenreIds: number[]; appliedKeywordIds: number[] }> {
-  const attempts: { genreIds: number[]; keywordIds: number[] }[] = [
-    { genreIds, keywordIds },
-  ];
-  if (keywordIds.length > 0) {
-    attempts.push({ genreIds, keywordIds: [] });
+): Promise<TMDBMovie[]> {
+  const page1 = await discover(genreIds, keywordIds, 1);
+  const extraPageNumbers: number[] = [];
+  for (let page = 2; page <= Math.min(page1.total_pages, POOL_PAGES); page++) {
+    extraPageNumbers.push(page);
   }
-  if (genreIds.length > 1) {
-    attempts.push({ genreIds: genreIds.slice(0, 1), keywordIds: [] });
+  const morePages = await Promise.all(
+    extraPageNumbers.map((page) => discover(genreIds, keywordIds, page))
+  );
+  return [...page1.results, ...morePages.flatMap((r) => r.results)];
+}
+
+// Subtracted once per clashing genre a candidate carries (see avoidGenres
+// on the schema above) - strictly smaller than KEYWORD_POINTS_ONE (2) so a
+// candidate with a real mood-keyword match plus exactly one clash genre
+// still outranks an untagged, non-clashing candidate (2 genre baseline + 2
+// keyword - 1 clash = 3, vs. 2 baseline + 0 = 2). Two or more simultaneous
+// clash genres CAN invert that against a single-keyword match - treated as
+// correct, not a bug: a candidate clashing on multiple genres at once is a
+// genuinely worse fit even with an incidental keyword tag.
+const AVOID_GENRE_PENALTY = 1;
+
+export async function discoverAndRankMoodPool(
+  discover: (genreIds: number[], keywordIds: number[], page: number) => Promise<TMDBSearchResponse>,
+  genreIds: number[],
+  keywordIds: number[],
+  avoidGenreIds: number[],
+  genreNames: Map<number, string>,
+  keywordNames: Map<number, string>,
+  mediaType: "movie" | "tv"
+): Promise<{
+  results: (TMDBMovie & { matchExplanation: string | null })[];
+  appliedGenreIds: number[];
+}> {
+  const precisionPool =
+    keywordIds.length > 0 ? await fetchPoolPages(discover, genreIds, keywordIds) : [];
+
+  let bulkGenreIds = genreIds;
+  let bulkPage1 = await discover(bulkGenreIds, [], 1);
+  if (bulkPage1.results.length < MIN_MOOD_RESULTS && genreIds.length > 1) {
+    bulkGenreIds = genreIds.slice(0, 1);
+    bulkPage1 = await discover(bulkGenreIds, [], 1);
+  }
+  const bulkExtraPageNumbers: number[] = [];
+  for (let page = 2; page <= Math.min(bulkPage1.total_pages, POOL_PAGES); page++) {
+    bulkExtraPageNumbers.push(page);
+  }
+  const bulkMorePages = await Promise.all(
+    bulkExtraPageNumbers.map((page) => discover(bulkGenreIds, [], page))
+  );
+  const bulkPool = [...bulkPage1.results, ...bulkMorePages.flatMap((r) => r.results)];
+
+  const seenIds = new Set<number>();
+  const pool: TMDBMovie[] = [];
+  for (const item of [...precisionPool, ...bulkPool]) {
+    if (seenIds.has(item.id)) continue;
+    seenIds.add(item.id);
+    pool.push(item);
   }
 
-  let attempt = attempts[0];
-  let result = await discover(attempt.genreIds, attempt.keywordIds);
+  const getKeywords = mediaType === "movie" ? getMovieKeywordList : getTVKeywordList;
+  const poolKeywordIdSets = await Promise.all(
+    pool.map(async (candidate) => {
+      try {
+        const keywords = await getKeywords(candidate.id);
+        return new Set(keywords.map((keyword) => keyword.id));
+      } catch {
+        // Best-effort: a failed keyword lookup just scores that candidate
+        // on genre only, same tolerance as blend's candidate scoring.
+        return new Set<number>();
+      }
+    })
+  );
 
-  for (const next of attempts.slice(1)) {
-    if (result.results.length >= MIN_MOOD_RESULTS) break;
-    attempt = next;
-    result = await discover(attempt.genreIds, attempt.keywordIds);
-  }
+  const avoidGenreIdSet = new Set(avoidGenreIds);
+  const scored = pool.map((candidate, index) => {
+    const signals = computeMatchSignals(
+      candidate.genre_ids,
+      poolKeywordIdSets[index],
+      genreNames,
+      keywordNames
+    );
+    const clashCount = candidate.genre_ids.filter((id) => avoidGenreIdSet.has(id)).length;
+    return {
+      candidate,
+      score: blendSignalScore(signals) - clashCount * AVOID_GENRE_PENALTY,
+      matchExplanation: explainMoodMatch(signals),
+    };
+  });
 
-  return { ...result, appliedGenreIds: attempt.genreIds, appliedKeywordIds: attempt.keywordIds };
+  // Stable sort: the pool arrives already ordered by the resolved sort
+  // (popularity or vote_average), so equal scores keep that order as an
+  // implicit tiebreak - same pattern vibe-blend.ts already relies on.
+  scored.sort((a, b) => b.score - a.score);
+
+  return {
+    results: scored
+      .slice(0, MOOD_RESULTS_LIMIT)
+      .map((entry) => ({ ...entry.candidate, matchExplanation: entry.matchExplanation })),
+    appliedGenreIds: bulkGenreIds,
+  };
 }

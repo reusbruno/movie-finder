@@ -11,14 +11,14 @@ import {
   interpretMoodQuery,
   isMoodSearchAvailable,
   resolveMoodFilters,
-  discoverWithMoodFallback,
+  discoverAndRankMoodPool,
   applyMoodFilterOverrides,
   toResolvedMoodParams,
   fromResolvedMoodParams,
   MoodSearchError,
+  POOL_MIN_VOTE_COUNT,
   type ResolvedMoodParams,
 } from "@/lib/mood-search";
-import { attachMatchExplanations, explainMoodMatch } from "@/lib/match-explanation";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import { isWatchRegion } from "@/lib/watch-providers";
 
@@ -138,6 +138,7 @@ export async function POST(request: NextRequest) {
 
     let genreIds: number[];
     let keywordIds: number[];
+    let avoidGenreIds: number[];
     let genreNames: Map<number, string>;
     let keywordNames: Map<number, string>;
     let sortBy: string;
@@ -173,6 +174,7 @@ export async function POST(request: NextRequest) {
       const resolved = await resolveMoodFilters(interpretation, "movie", genres);
       genreIds = resolved.genreIds;
       keywordIds = resolved.keywordIds;
+      avoidGenreIds = resolved.avoidGenreIds;
       genreNames = resolved.genreNames;
       keywordNames = resolved.keywordNames;
       sortBy = resolved.sortBy;
@@ -186,6 +188,7 @@ export async function POST(request: NextRequest) {
       const fromCache = fromResolvedMoodParams(cachedInterpretation);
       genreIds = fromCache.genreIds;
       keywordIds = fromCache.keywordIds;
+      avoidGenreIds = fromCache.avoidGenreIds;
       genreNames = fromCache.genreNames;
       keywordNames = fromCache.keywordNames;
       sortBy = fromCache.sortBy;
@@ -204,8 +207,8 @@ export async function POST(request: NextRequest) {
       ? (merged.sortBy as MovieSortBy)
       : "popularity.desc";
 
-    const { appliedGenreIds, appliedKeywordIds, ...results } = await discoverWithMoodFallback(
-      (candidateGenreIds, candidateKeywordIds) =>
+    const { results: ranked, appliedGenreIds } = await discoverAndRankMoodPool(
+      (candidateGenreIds, candidateKeywordIds, page) =>
         discoverMovies({
           genreIds: candidateGenreIds,
           keywordIds: candidateKeywordIds,
@@ -214,18 +217,17 @@ export async function POST(request: NextRequest) {
           genreMatchMode: merged.genreMatchMode,
           watchProviderIds: overrides.watchProviderIds,
           watchRegion: overrides.watchRegion,
+          page,
+          voteCountGte: POOL_MIN_VOTE_COUNT,
         }),
       merged.genreIds,
-      keywordIds
-    );
-    const withExplanations = await attachMatchExplanations(
-      results.results,
-      "movie",
+      keywordIds,
+      avoidGenreIds,
       genreNames,
       keywordNames,
-      explainMoodMatch
+      "movie"
     );
-    const enriched = await enrichMoviesWithRatings(withExplanations);
+    const enriched = await enrichMoviesWithRatings(ranked);
     const filtered = enriched.filter((movie) => passesRatingFilters(movie.ratings, minImdb, minRt));
 
     // Once genre is user-overridden, the applied set *is* the user's own
@@ -238,16 +240,18 @@ export async function POST(request: NextRequest) {
       : appliedGenreIds
           .map((id) => genreNames.get(id))
           .filter((name): name is string => name !== undefined);
-    const appliedKeywordTerms = appliedKeywordIds
-      .map((id) => keywordNames.get(id))
-      .filter((name): name is string => name !== undefined);
+    // Keywords are now always a ranking signal (see discoverAndRankMoodPool
+    // in mood-search.ts), not conditionally a hard filter - the chips show
+    // the full resolved set unconditionally rather than narrowed to
+    // whatever survived the pool's fallback cascade, since even a keyword
+    // dropped from the FILTER still influenced which candidates ranked up.
+    const keywordTerms = [...keywordNames.values()];
 
     return NextResponse.json({
-      ...results,
       results: filtered,
       interpretation: {
         genreNames: appliedGenreNames,
-        keywordTerms: appliedKeywordTerms,
+        keywordTerms,
         sortBy,
         yearRange,
       },

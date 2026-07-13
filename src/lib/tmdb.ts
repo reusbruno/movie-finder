@@ -193,6 +193,10 @@ export function discoverMovies(options: {
   // to rent/buy through Netflix's storefront".
   watchProviderIds?: number[];
   watchRegion?: string;
+  // Overrides the sortBy-based vote_count.gte default below. Mood search's
+  // candidate-pool query uses this to require a trustworthy tag/vote base
+  // regardless of sort - see mood-search.ts's POOL_MIN_VOTE_COUNT.
+  voteCountGte?: number;
 }): Promise<TMDBSearchResponse> {
   const {
     genreIds = [],
@@ -203,13 +207,15 @@ export function discoverMovies(options: {
     genreMatchMode = "any",
     watchProviderIds = [],
     watchRegion,
+    voteCountGte,
   } = options;
 
   const params: Record<string, string> = {
     sort_by: sortBy,
     page: String(page),
     "vote_count.gte": String(
-      sortBy === "vote_average.desc" ? TOP_RATED_MIN_VOTE_COUNT : DEFAULT_MIN_VOTE_COUNT
+      voteCountGte ??
+        (sortBy === "vote_average.desc" ? TOP_RATED_MIN_VOTE_COUNT : DEFAULT_MIN_VOTE_COUNT)
     ),
   };
   if (genreIds.length > 0) {
@@ -461,6 +467,8 @@ export function discoverTV(options: {
   // See discoverMovies.
   watchProviderIds?: number[];
   watchRegion?: string;
+  // See discoverMovies.
+  voteCountGte?: number;
 }): Promise<TMDBSearchResponse> {
   const {
     genreIds = [],
@@ -471,13 +479,15 @@ export function discoverTV(options: {
     genreMatchMode = "any",
     watchProviderIds = [],
     watchRegion,
+    voteCountGte,
   } = options;
 
   const params: Record<string, string> = {
     sort_by: sortBy,
     page: String(page),
     "vote_count.gte": String(
-      sortBy === "vote_average.desc" ? TOP_RATED_MIN_VOTE_COUNT : DEFAULT_MIN_VOTE_COUNT
+      voteCountGte ??
+        (sortBy === "vote_average.desc" ? TOP_RATED_MIN_VOTE_COUNT : DEFAULT_MIN_VOTE_COUNT)
     ),
   };
   if (genreIds.length > 0) {
