@@ -3,16 +3,22 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Search } from "lucide-react";
-import type { TMDBMovie } from "@/lib/tmdb";
+import type { TMDBMovie, TMDBPerson } from "@/lib/tmdb";
 
 const DEBOUNCE_MS = 400;
+const MAX_TITLE_RESULTS = 8;
+// People are a secondary lookup here (see the Actors-tab removal this
+// folded into) - a shorter cap keeps the dropdown from being dominated by
+// cast members when the title list is already long.
+const MAX_PEOPLE_RESULTS = 4;
 
-// Compact quick-lookup for power users who just want a specific title,
-// without going through the hero. Fully self-contained (own fetch, own
-// state) - clicking a result or pressing Enter navigates straight to the
-// title's detail page, it never touches MediaExplorer's search/filter
-// state. Same debounce/abort/request-id shape as TitlePicker, but
-// navigates instead of selecting into a controlled value.
+// Compact quick-lookup for power users who just want a specific title (or,
+// now, a specific person), without going through the hero. Fully
+// self-contained (own fetch, own state) - clicking a result or pressing
+// Enter navigates straight to the detail page, it never touches
+// MediaExplorer's search/filter state. Same debounce/abort/request-id
+// shape as TitlePicker, but navigates instead of selecting into a
+// controlled value.
 export function HeaderSearch() {
   const pathname = usePathname();
   const router = useRouter();
@@ -21,7 +27,8 @@ export function HeaderSearch() {
 
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<TMDBMovie[]>([]);
+  const [titleResults, setTitleResults] = useState<TMDBMovie[]>([]);
+  const [peopleResults, setPeopleResults] = useState<TMDBPerson[]>([]);
   const [loading, setLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const requestIdRef = useRef(0);
@@ -33,11 +40,17 @@ export function HeaderSearch() {
   function reset() {
     setOpen(false);
     setQuery("");
-    setResults([]);
+    setTitleResults([]);
+    setPeopleResults([]);
   }
 
   function goToTitle(id: number) {
     router.push(`/${basePath}/${id}`);
+    reset();
+  }
+
+  function goToPerson(id: number) {
+    router.push(`/actors/${id}`);
     reset();
   }
 
@@ -63,26 +76,31 @@ export function HeaderSearch() {
 
       setLoading(true);
 
-      try {
-        const response = await fetch(
-          `${searchEndpoint}?query=${encodeURIComponent(trimmedQuery)}`,
-          { signal: controller.signal }
-        );
-        const data = await response.json();
+      // Promise.allSettled, not Promise.all - people search is a secondary,
+      // best-effort addition here; a failure there shouldn't blank out
+      // title results that already succeeded, or vice versa.
+      const [titleSettled, peopleSettled] = await Promise.allSettled([
+        fetch(`${searchEndpoint}?query=${encodeURIComponent(trimmedQuery)}`, {
+          signal: controller.signal,
+        }).then((response) => response.json()),
+        fetch(`/api/people/search?query=${encodeURIComponent(trimmedQuery)}`, {
+          signal: controller.signal,
+        }).then((response) => response.json()),
+      ]);
 
-        if (requestId !== requestIdRef.current) return;
-        if (!response.ok) throw new Error(data.error ?? "Search failed");
+      if (requestId !== requestIdRef.current) return;
 
-        setResults((data.results ?? []).slice(0, 8));
-      } catch (err) {
-        if (requestId !== requestIdRef.current) return;
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        setResults([]);
-      } finally {
-        if (requestId === requestIdRef.current) {
-          setLoading(false);
-        }
-      }
+      setTitleResults(
+        titleSettled.status === "fulfilled"
+          ? (titleSettled.value.results ?? []).slice(0, MAX_TITLE_RESULTS)
+          : []
+      );
+      setPeopleResults(
+        peopleSettled.status === "fulfilled"
+          ? (peopleSettled.value.results ?? []).slice(0, MAX_PEOPLE_RESULTS)
+          : []
+      );
+      setLoading(false);
     }, DEBOUNCE_MS);
 
     return () => clearTimeout(timeout);
@@ -103,7 +121,7 @@ export function HeaderSearch() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label="Search titles"
+        aria-label="Search titles and people"
         className="text-foreground/60 transition-colors hover:text-foreground"
       >
         <Search className="h-4 w-4" />
@@ -121,39 +139,83 @@ export function HeaderSearch() {
         onKeyDown={(event) => {
           if (event.key === "Escape") {
             reset();
-          } else if (event.key === "Enter" && results[0]) {
-            goToTitle(results[0].id);
+          } else if (event.key === "Enter") {
+            // Titles are still the primary case (see the component-level
+            // comment) - Enter goes to the top title match if there is one,
+            // falling back to the top person only when a query matches a
+            // name but no title at all (e.g. a pure actor-name lookup).
+            if (titleResults[0]) {
+              goToTitle(titleResults[0].id);
+            } else if (peopleResults[0]) {
+              goToPerson(peopleResults[0].id);
+            }
           }
         }}
         placeholder="Search titles…"
-        aria-label="Search titles"
+        aria-label="Search titles and people"
         className="w-48 rounded-full border border-black/[.08] bg-transparent px-3 py-1.5 text-sm outline-none focus:border-foreground/40 dark:border-white/[.145]"
       />
+      {/* Anchored to the input's left edge on narrow viewports - right-0
+          alone overflows off-screen there, since the collapsed mobile
+          header (wordmark hidden) sits the input close to the left edge
+          with a fixed w-64 dropdown extending further left than that. sm
+          and up reverts to right-0, matching the wider desktop header
+          where the search icon sits close to the right edge instead. */}
       {trimmedQuery !== "" && (
-        <div className="absolute right-0 z-10 mt-1 w-64 overflow-hidden rounded-md border border-black/[.08] bg-background shadow-lg dark:border-white/[.145]">
+        <div className="absolute left-0 z-10 mt-1 max-h-96 w-64 overflow-y-auto rounded-md border border-black/[.08] bg-background shadow-lg sm:left-auto sm:right-0 dark:border-white/[.145]">
           {loading ? (
             <p className="px-3 py-2 text-xs text-foreground/50">Searching…</p>
-          ) : results.length === 0 ? (
+          ) : titleResults.length === 0 && peopleResults.length === 0 ? (
             <p className="px-3 py-2 text-xs text-foreground/50">No matches</p>
           ) : (
-            <ul>
-              {results.map((result) => (
-                <li key={result.id}>
-                  <button
-                    type="button"
-                    onClick={() => goToTitle(result.id)}
-                    className="block w-full px-3 py-2 text-left text-sm hover:bg-foreground/5"
-                  >
-                    {result.title}
-                    {result.release_date && (
-                      <span className="ml-2 text-xs text-foreground/50">
-                        {result.release_date.slice(0, 4)}
-                      </span>
-                    )}
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <>
+              {titleResults.length > 0 && (
+                <ul>
+                  {titleResults.map((result) => (
+                    <li key={result.id}>
+                      <button
+                        type="button"
+                        onClick={() => goToTitle(result.id)}
+                        className="block w-full px-3 py-2 text-left text-sm hover:bg-foreground/5"
+                      >
+                        {result.title}
+                        {result.release_date && (
+                          <span className="ml-2 text-xs text-foreground/50">
+                            {result.release_date.slice(0, 4)}
+                          </span>
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {peopleResults.length > 0 && (
+                <div
+                  className={
+                    titleResults.length > 0
+                      ? "border-t border-black/[.08] dark:border-white/[.145]"
+                      : undefined
+                  }
+                >
+                  <p className="px-3 pt-2 text-xs font-medium tracking-wide text-foreground/50 uppercase">
+                    People
+                  </p>
+                  <ul>
+                    {peopleResults.map((person) => (
+                      <li key={person.id}>
+                        <button
+                          type="button"
+                          onClick={() => goToPerson(person.id)}
+                          className="block w-full px-3 py-2 text-left text-sm hover:bg-foreground/5"
+                        >
+                          {person.name}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}

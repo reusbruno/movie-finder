@@ -1,17 +1,6 @@
-"use client";
-
-import { useState } from "react";
-import type { TMDBGenre, TMDBPerson, MovieSortBy } from "@/lib/tmdb";
+import type { TMDBGenre, MovieSortBy } from "@/lib/tmdb";
 import type { MovieWithRatings } from "@/lib/ratings";
 import { MediaExplorer, type MediaExplorerConfig } from "@/components/media-explorer";
-import { ActorSearch } from "@/components/actor-search";
-
-const TABS = [
-  { id: "movies", label: "Movies" },
-  { id: "actors", label: "Actors" },
-] as const;
-
-type Tab = (typeof TABS)[number]["id"];
 
 const MOVIES_CONFIG: MediaExplorerConfig<MovieSortBy> = {
   basePath: "movies",
@@ -36,44 +25,17 @@ export function MoviesView({
   initialMovies,
   initialTotalPages,
   genres,
-  initialPeople,
 }: {
   initialMovies: MovieWithRatings[];
   initialTotalPages: number;
   genres: TMDBGenre[];
-  initialPeople: TMDBPerson[];
 }) {
-  const [tab, setTab] = useState<Tab>("movies");
-
   return (
-    <div className="flex flex-1 flex-col">
-      <div className="flex gap-2 border-b border-black/[.08] px-6 pt-4 dark:border-white/[.145]">
-        {TABS.map(({ id, label }) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setTab(id)}
-            aria-current={tab === id ? "page" : undefined}
-            className={`rounded-t-md px-3 py-2 text-sm font-medium transition-colors ${
-              tab === id
-                ? "border-b-2 border-accent text-accent"
-                : "text-foreground/60 hover:text-foreground"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      {tab === "movies" ? (
-        <MediaExplorer
-          initialItems={initialMovies}
-          initialTotalPages={initialTotalPages}
-          genres={genres}
-          config={MOVIES_CONFIG}
-        />
-      ) : (
-        <ActorSearch initialPeople={initialPeople} />
-      )}
-    </div>
+    <MediaExplorer
+      initialItems={initialMovies}
+      initialTotalPages={initialTotalPages}
+      genres={genres}
+      config={MOVIES_CONFIG}
+    />
   );
 }

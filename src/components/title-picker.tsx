@@ -11,7 +11,7 @@ export interface PickedTitle {
 }
 
 // Compact single-title picker: debounced search -> dropdown of matches ->
-// pick one. Same debounce/abort/request-id pattern as ActorSearch and
+// pick one. Same debounce/abort/request-id pattern as HeaderSearch and
 // MediaExplorer's quick search, adapted into a combobox instead of a
 // grid-filtering input since callers need exactly one selected title.
 export function TitlePicker({
