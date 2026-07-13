@@ -151,6 +151,12 @@ export function MediaExplorer<TSortBy extends string>({
   // genuinely changed since we last asked" apart from "moodResolvedParams
   // just settled from our own fetch" - see the effect for how it's used.
   const moodFetchKeyRef = useRef<string | null>(null);
+  // Which query moodResolvedParams currently reflects. A fresh submitMood
+  // call invalidates this immediately (before its own response arrives), so
+  // a filter change racing against that in-flight fresh query can never
+  // reuse the OLD interpretation against the NEW moodQuery - see the
+  // filter-change effect below, which checks this before firing.
+  const moodResolvedQueryRef = useRef<string | null>(null);
 
   const [blendTitleA, setBlendTitleA] = useState<PickedTitle | null>(null);
   const [blendTitleB, setBlendTitleB] = useState<PickedTitle | null>(null);
@@ -257,6 +263,7 @@ export function MediaExplorer<TSortBy extends string>({
     moodAbortRef.current?.abort();
     moodRequestIdRef.current += 1;
     moodFetchKeyRef.current = null;
+    moodResolvedQueryRef.current = null;
     setMoodInput("");
     setMoodQuery("");
     setMoodResults(null);
@@ -428,6 +435,16 @@ export function MediaExplorer<TSortBy extends string>({
     moodAbortRef.current = controller;
     const requestId = ++moodRequestIdRef.current;
 
+    // A fresh query invalidates whatever moodResolvedParams currently holds
+    // immediately - before this fetch's own response arrives - so the
+    // filter-change effect below can't fire a cachedInterpretation request
+    // against the OLD interpretation while this one is still in flight (it
+    // checks moodResolvedQueryRef against moodQuery, which has already been
+    // updated to the new query by the time this runs - see submitMood).
+    if ("query" in payloadBase) {
+      moodResolvedQueryRef.current = null;
+    }
+
     moodFetchKeyRef.current = currentFilterKey();
     setMoodLoading(true);
     setMoodError(null);
@@ -466,6 +483,13 @@ export function MediaExplorer<TSortBy extends string>({
       setMoodResults(data.results);
       setMoodInterpretation(data.interpretation ?? null);
       setMoodResolvedParams(data.resolvedParams ?? null);
+      // Only the fresh-query path re-anchors which query this interpretation
+      // belongs to - the cachedInterpretation path reuses the same
+      // interpretation the original query already resolved, so the anchor
+      // it set stays correct and shouldn't move.
+      if ("query" in payloadBase) {
+        moodResolvedQueryRef.current = payloadBase.query;
+      }
     } catch (err) {
       if (requestId !== moodRequestIdRef.current) return;
       if (err instanceof DOMException && err.name === "AbortError") return;
@@ -673,6 +697,14 @@ export function MediaExplorer<TSortBy extends string>({
   // mood fetch, so a matching key means "already reflects this state").
   useEffect(() => {
     if (moodQuery === "" || !moodResolvedParams) return;
+    // moodResolvedParams can lag behind moodQuery for one render - e.g. a
+    // fresh submitMood call updates moodQuery immediately but its
+    // interpretation hasn't come back yet, so moodResolvedParams (and
+    // moodResolvedQueryRef) still reflect the PREVIOUS query. Without this
+    // check, this effect would fire a cachedInterpretation request that
+    // composes the current filters against that stale interpretation
+    // instead of waiting for the fresh one already in flight.
+    if (moodResolvedQueryRef.current !== moodQuery) return;
     if (currentFilterKey() === moodFetchKeyRef.current) return;
     runMoodDiscovery({ cachedInterpretation: moodResolvedParams });
     // eslint-disable-next-line react-hooks/exhaustive-deps
