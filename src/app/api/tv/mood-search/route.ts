@@ -204,19 +204,19 @@ export async function POST(request: NextRequest) {
       : "popularity.desc";
 
     const { results: ranked, appliedGenreIds } = await discoverAndRankMoodPool(
-      (candidateGenreIds, candidateKeywordIds, page) =>
+      (candidateGenreIds, candidateKeywordIds, page, genreMatchMode) =>
         discoverTV({
           genreIds: candidateGenreIds,
           keywordIds: candidateKeywordIds,
           sortBy: mergedSortBy,
           yearRange: merged.yearRange,
-          genreMatchMode: merged.genreMatchMode,
+          genreMatchMode,
           watchProviderIds: overrides.watchProviderIds,
           watchRegion: overrides.watchRegion,
           page,
           voteCountGte: POOL_MIN_VOTE_COUNT,
         }),
-      merged.genreIds,
+      merged.genreAttempts,
       keywordIds,
       avoidGenreIds,
       genreNames,

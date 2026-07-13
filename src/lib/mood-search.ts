@@ -373,11 +373,7 @@ export function fromResolvedMoodParams(params: ResolvedMoodParams): {
 // with filters (real user feedback: filtering felt broken combined with
 // mood search). Keywords always pass through untouched regardless of
 // overrides - there's no UI control for them, so there's never a real
-// conflict to resolve. A genre override also switches genre matching from
-// mood's AND (a hard, narrowing filter meant for LLM-extracted genres) to
-// the browse page's own OR convention - selectedGenres is that exact same
-// checkbox state, so once the user is explicitly picking genres, they get
-// checkbox semantics, not mood's.
+// conflict to resolve.
 export interface MoodFilterOverrides {
   genreIds?: number[];
   sortBy?: string;
@@ -385,19 +381,67 @@ export interface MoodFilterOverrides {
   watchRegion?: string;
 }
 
+export interface MoodGenreAttempt {
+  genreIds: number[];
+  genreMatchMode: "any" | "all";
+}
+
+// A genre override used to REPLACE the mood's own genres outright (hard
+// AND -> OR checkbox semantics). Real usage showed this producing wrong
+// results: mood "slow melancholic sci-fi" (Science Fiction+Drama) plus
+// checking Adventure returned Wizard of Oz and Meet the Robinsons - the
+// sci-fi constraint just gone, replaced by Adventure alone. What's wanted
+// instead is narrowing: mood genres AND the user's pick, all required at
+// once (-> Interstellar, Project Hail Mary - both genuinely Science
+// Fiction+Drama+Adventure). So the override now produces an ORDERED list
+// of attempts for discoverAndRankMoodPool to try in sequence, most
+// specific first, falling back only when an attempt is too thin
+// (MIN_MOOD_RESULTS below) - a genuinely contradictory pick (mood "cozy
+// feel-good comedy" + checking Horror) still needs to show *something*
+// rather than a near-empty grid, so it falls back to the user's own pick
+// alone, OR mode, matching the browse page's normal checkbox convention -
+// this is the ONLY behavior mood search had before this change, now
+// demoted to a fallback instead of the default.
 export function applyMoodFilterOverrides(
   params: { genreIds: number[]; sortBy: string; yearRange?: TMDBYearRange },
   overrides: MoodFilterOverrides
 ): {
-  genreIds: number[];
-  genreMatchMode: "any" | "all";
+  genreAttempts: MoodGenreAttempt[];
   sortBy: string;
   yearRange?: TMDBYearRange;
 } {
   const hasGenreOverride = Boolean(overrides.genreIds && overrides.genreIds.length > 0);
+
+  let genreAttempts: MoodGenreAttempt[];
+  if (hasGenreOverride) {
+    const combinedGenreIds = [...new Set([...params.genreIds, ...overrides.genreIds!])];
+    genreAttempts =
+      // Nothing to narrow FROM if the mood itself resolved to zero genres -
+      // the "combined" set would just be the user's own pick again, making
+      // a second, OR-mode attempt at the identical id list redundant.
+      params.genreIds.length > 0
+        ? [
+            { genreIds: combinedGenreIds, genreMatchMode: "all" },
+            { genreIds: overrides.genreIds!, genreMatchMode: "any" },
+          ]
+        : [{ genreIds: overrides.genreIds!, genreMatchMode: "any" }];
+  } else {
+    genreAttempts =
+      // Two AND'd mood genres can over-narrow on their own (Comedy + Family
+      // skews toward kids' animation), independent of any user override -
+      // narrows to just the primary genre as a last resort. Skipped when
+      // there's only one mood genre to begin with, since slice(0, 1) of a
+      // single-genre list is the same attempt again.
+      params.genreIds.length > 1
+        ? [
+            { genreIds: params.genreIds, genreMatchMode: "all" },
+            { genreIds: params.genreIds.slice(0, 1), genreMatchMode: "all" },
+          ]
+        : [{ genreIds: params.genreIds, genreMatchMode: "all" }];
+  }
+
   return {
-    genreIds: hasGenreOverride ? overrides.genreIds! : params.genreIds,
-    genreMatchMode: hasGenreOverride ? "any" : "all",
+    genreAttempts,
     sortBy: overrides.sortBy ?? params.sortBy,
     yearRange: params.yearRange,
   };
@@ -412,9 +456,12 @@ export function applyMoodFilterOverrides(
 // on vote-count threshold, so there's no real cost to relaxing more
 // readily. 10 gives a comfortable amount of variety without being so low
 // that a precise, well-populated keyword match gets discarded for no reason.
-// Now only gates the BULK pool's genre-narrowing decision below - keywords
-// no longer have a "give up and drop the filter" threshold of their own,
-// since the precision pool (below) always takes whatever it finds.
+// Now gates the BULK pool's genre-attempt cascade below (both the
+// no-override "narrow to primary genre" case and the genre-override
+// "combined intersection too thin, fall back to the user's own pick"
+// case - see applyMoodFilterOverrides) - keywords no longer have a "give
+// up and drop the filter" threshold of their own, since the precision
+// pool (below) always takes whatever it finds.
 const MIN_MOOD_RESULTS = 10;
 
 // Reranking turns keywords from a filter-or-nothing switch into a ranking
@@ -439,11 +486,14 @@ const MIN_MOOD_RESULTS = 10;
 //   unconditionally and taken as-is however few results it has - every
 //   genuine keyword match is worth having, there's no "too thin, give up"
 //   threshold here unlike the old keyword-drop fallback this replaces.
-// - bulk: genre only (never keyword-filtered), for volume - falls back to
-//   just the primary genre if even genre-only is too thin (MIN_MOOD_RESULTS
-//   on page 1), since two AND'd genres can over-narrow on their own
-//   (Comedy + Family skews toward kids' animation) independent of keyword
-//   sparsity.
+// - bulk: genre only (never keyword-filtered), for volume - walks
+//   genreAttempts (see applyMoodFilterOverrides) in order, falling back to
+//   the next attempt whenever the current one is too thin on page 1
+//   (MIN_MOOD_RESULTS). Covers two distinct cases with the same cascade:
+//   two AND'd mood genres over-narrowing on their own (Comedy + Family
+//   skews toward kids' animation), and a user genre override that's too
+//   narrow once intersected with the mood's own genres, falling back to
+//   the user's pick alone.
 // Deduped by id after union; every pool member (from either set) is scored
 // against the FULL original keyword set below, so bulk-only members still
 // get credit for any keyword they happen to carry.
@@ -458,18 +508,29 @@ const MOOD_RESULTS_LIMIT = 20;
 // enough for a pool either way, precision set included.
 export const POOL_MIN_VOTE_COUNT = 200;
 
-async function fetchPoolPages(
-  discover: (genreIds: number[], keywordIds: number[], page: number) => Promise<TMDBSearchResponse>,
+// genreMatchMode is a per-call argument (not baked into the closure) since
+// discoverAndRankMoodPool now needs to fetch different genre attempts -
+// combined AND, then a looser OR fallback - within the same pool build.
+type DiscoverMoodPage = (
   genreIds: number[],
-  keywordIds: number[]
+  keywordIds: number[],
+  page: number,
+  genreMatchMode: "any" | "all"
+) => Promise<TMDBSearchResponse>;
+
+async function fetchPoolPages(
+  discover: DiscoverMoodPage,
+  genreIds: number[],
+  keywordIds: number[],
+  genreMatchMode: "any" | "all"
 ): Promise<TMDBMovie[]> {
-  const page1 = await discover(genreIds, keywordIds, 1);
+  const page1 = await discover(genreIds, keywordIds, 1, genreMatchMode);
   const extraPageNumbers: number[] = [];
   for (let page = 2; page <= Math.min(page1.total_pages, POOL_PAGES); page++) {
     extraPageNumbers.push(page);
   }
   const morePages = await Promise.all(
-    extraPageNumbers.map((page) => discover(genreIds, keywordIds, page))
+    extraPageNumbers.map((page) => discover(genreIds, keywordIds, page, genreMatchMode))
   );
   return [...page1.results, ...morePages.flatMap((r) => r.results)];
 }
@@ -485,8 +546,8 @@ async function fetchPoolPages(
 const AVOID_GENRE_PENALTY = 1;
 
 export async function discoverAndRankMoodPool(
-  discover: (genreIds: number[], keywordIds: number[], page: number) => Promise<TMDBSearchResponse>,
-  genreIds: number[],
+  discover: DiscoverMoodPage,
+  genreAttempts: MoodGenreAttempt[],
   keywordIds: number[],
   avoidGenreIds: number[],
   genreNames: Map<number, string>,
@@ -496,21 +557,38 @@ export async function discoverAndRankMoodPool(
   results: (TMDBMovie & { matchExplanation: string | null })[];
   appliedGenreIds: number[];
 }> {
+  // The precision pool always uses the most specific attempt (genreAttempts[0]
+  // - mood's own genres, or mood+user combined when a genre is overridden)
+  // unconditionally, regardless of what the bulk pool below ends up falling
+  // back to - matching its existing "take whatever genuine matches exist, no
+  // relaxation" philosophy. Worst case it contributes nothing and the bulk
+  // pool's own fallback carries the grid.
+  const primaryAttempt = genreAttempts[0];
   const precisionPool =
-    keywordIds.length > 0 ? await fetchPoolPages(discover, genreIds, keywordIds) : [];
+    keywordIds.length > 0
+      ? await fetchPoolPages(
+          discover,
+          primaryAttempt.genreIds,
+          keywordIds,
+          primaryAttempt.genreMatchMode
+        )
+      : [];
 
-  let bulkGenreIds = genreIds;
-  let bulkPage1 = await discover(bulkGenreIds, [], 1);
-  if (bulkPage1.results.length < MIN_MOOD_RESULTS && genreIds.length > 1) {
-    bulkGenreIds = genreIds.slice(0, 1);
-    bulkPage1 = await discover(bulkGenreIds, [], 1);
+  let bulkAttempt = primaryAttempt;
+  let bulkPage1 = await discover(bulkAttempt.genreIds, [], 1, bulkAttempt.genreMatchMode);
+  for (const next of genreAttempts.slice(1)) {
+    if (bulkPage1.results.length >= MIN_MOOD_RESULTS) break;
+    bulkAttempt = next;
+    bulkPage1 = await discover(bulkAttempt.genreIds, [], 1, bulkAttempt.genreMatchMode);
   }
   const bulkExtraPageNumbers: number[] = [];
   for (let page = 2; page <= Math.min(bulkPage1.total_pages, POOL_PAGES); page++) {
     bulkExtraPageNumbers.push(page);
   }
   const bulkMorePages = await Promise.all(
-    bulkExtraPageNumbers.map((page) => discover(bulkGenreIds, [], page))
+    bulkExtraPageNumbers.map((page) =>
+      discover(bulkAttempt.genreIds, [], page, bulkAttempt.genreMatchMode)
+    )
   );
   const bulkPool = [...bulkPage1.results, ...bulkMorePages.flatMap((r) => r.results)];
 
@@ -561,6 +639,6 @@ export async function discoverAndRankMoodPool(
     results: scored
       .slice(0, MOOD_RESULTS_LIMIT)
       .map((entry) => ({ ...entry.candidate, matchExplanation: entry.matchExplanation })),
-    appliedGenreIds: bulkGenreIds,
+    appliedGenreIds: bulkAttempt.genreIds,
   };
 }
