@@ -1,22 +1,28 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { SlidersHorizontal } from "lucide-react";
 
 export function FilterPanel({
   activeCount,
+  open,
+  onToggle,
   children,
 }: {
   activeCount: number;
+  // Controlled (not internal useState) so a parent can force it open in
+  // one step - see media-explorer.tsx's handleToggleFilters, which does
+  // exactly that when "Browse with filters" is clicked while a mood
+  // search is active.
+  open: boolean;
+  onToggle: () => void;
   children: ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
-
   return (
     <>
       <button
         type="button"
-        onClick={() => setOpen((value) => !value)}
+        onClick={onToggle}
         aria-expanded={open}
         className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-medium transition-colors ${
           open

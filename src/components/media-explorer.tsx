@@ -225,6 +225,10 @@ export function MediaExplorer<TSortBy extends string>({
   // the filters row never clears an active filter - see toggleFilters.
   const [heroView, setHeroView] = useState<"mood" | "blend">("mood");
   const [filtersRevealed, setFiltersRevealed] = useState(false);
+  // Lifted out of FilterPanel (was its own internal useState) so it can be
+  // forced open in one step from handleToggleFilters below, instead of
+  // always starting collapsed on every reveal.
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
 
   const trimmedQuery = query.trim();
   const filtersActive =
@@ -889,7 +893,20 @@ export function MediaExplorer<TSortBy extends string>({
   }
 
   function handleToggleFilters() {
-    setFiltersRevealed((prev) => !prev);
+    setFiltersRevealed((prev) => {
+      const next = !prev;
+      // Opening while mood is active skips straight to the actual filter
+      // controls in one click - the plain search input isn't shown in this
+      // state (it composes with mood the same as every other filter, but
+      // showing a text box that's irrelevant mid-mood just reads as
+      // confusing), so there'd otherwise be nothing else to click through
+      // to reach them. Browse mode (no mood) keeps the existing two-step
+      // reveal-then-expand, since the search input genuinely belongs there.
+      if (next && moodQuery !== "") {
+        setFilterPanelOpen(true);
+      }
+      return next;
+    });
   }
 
   return (
@@ -936,15 +953,25 @@ export function MediaExplorer<TSortBy extends string>({
 
       {filtersRevealed && (
         <div className="flex flex-wrap items-center gap-3">
-          <input
-            type="search"
-            value={query}
-            onChange={(event) => updateQuery(event.target.value)}
-            placeholder={searchPlaceholder}
-            aria-label={searchPlaceholder.replace("…", "")}
-            className="w-full max-w-md rounded-full border border-black/[.08] bg-transparent px-4 py-2 text-sm outline-none focus:border-foreground/40 dark:border-white/[.145]"
-          />
-          <FilterPanel activeCount={activeFilterCount}>
+          {/* Irrelevant mid-mood (query is guaranteed empty whenever mood is
+              active - submitting or composing a mood always clears it) and
+              showing a text box that does nothing here just reads as
+              confusing, so it's hidden rather than merely inert. */}
+          {moodQuery === "" && (
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => updateQuery(event.target.value)}
+              placeholder={searchPlaceholder}
+              aria-label={searchPlaceholder.replace("…", "")}
+              className="w-full max-w-md rounded-full border border-black/[.08] bg-transparent px-4 py-2 text-sm outline-none focus:border-foreground/40 dark:border-white/[.145]"
+            />
+          )}
+          <FilterPanel
+            activeCount={activeFilterCount}
+            open={filterPanelOpen}
+            onToggle={() => setFilterPanelOpen((prev) => !prev)}
+          >
             <GenreFilter
               genres={genres}
               selectedGenreIds={selectedGenres}
