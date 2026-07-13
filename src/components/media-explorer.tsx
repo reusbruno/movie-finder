@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TMDB_MAX_DISCOVER_PAGE, type TMDBGenre } from "@/lib/tmdb";
 import type { MovieWithRatings } from "@/lib/ratings";
@@ -14,6 +14,8 @@ import { SkeletonGrid } from "@/components/skeletons";
 import { HeroSearch } from "@/components/hero-search";
 import { InterpretationChips } from "@/components/interpretation-chips";
 import { useWatchRegion } from "@/lib/use-watch-region";
+import { useLanguage } from "@/components/language-provider";
+import type { Dictionary } from "@/lib/i18n";
 
 const SEARCH_DEBOUNCE_MS = 400;
 const MIN_IMDB_OPTIONS = ["", "6", "7", "8", "9"] as const;
@@ -23,11 +25,14 @@ const MIN_RT_OPTIONS = ["", "25", "50", "75", "90"] as const;
 // as: …" caption - otherwise temporal language like "modern" or "80s" was
 // silently applied (or silently NOT applied) with no way to tell from the
 // UI, which is exactly what made a past bug here hard to spot.
-function formatYearRange(range?: { gte?: number; lte?: number }): string | null {
+function formatYearRange(
+  range: { gte?: number; lte?: number } | undefined,
+  t: Dictionary
+): string | null {
   if (!range?.gte && !range?.lte) return null;
   if (range.gte && range.lte) return `${range.gte}–${range.lte}`;
   if (range.gte) return `${range.gte}+`;
-  return `through ${range.lte}`;
+  return t.yearRange.through(range.lte!);
 }
 
 interface MoodInterpretation {
@@ -59,14 +64,15 @@ export interface MediaExplorerConfig<TSortBy extends string> {
   // pages the same way Discover mode does, rather than being capped at
   // whatever the server rendered for page 1.
   popularEndpoint: string;
-  searchPlaceholder: string;
-  sortOptions: { value: TSortBy; label: string }[];
+  // Just the values - display labels come from the dictionary's
+  // t.sortLabels, keyed by this same value, since this config is built in
+  // a Server Component (movies-view.tsx/series/page.tsx) that can't call
+  // useLanguage(). Same reasoning is why searchPlaceholder/popularHeading/
+  // itemsLabel/filterFootnote were dropped entirely below - MediaExplorer
+  // (a client component) resolves all of that itself from t.movies/t.series
+  // keyed off basePath.
+  sortOptions: { value: TSortBy }[];
   defaultSort: TSortBy;
-  popularHeading: string;
-  // Used to build error messages, e.g. "Failed to search movies" / "Failed to load TV shows".
-  itemsLabel: string;
-  // Optional extra note rendered below the filter controls (e.g. series' RT-score caveat).
-  filterFootnote?: ReactNode;
 }
 
 export function MediaExplorer<TSortBy extends string>({
@@ -90,13 +96,16 @@ export function MediaExplorer<TSortBy extends string>({
     moodSearchEndpoint,
     vibeBlendEndpoint,
     popularEndpoint,
-    searchPlaceholder,
     sortOptions,
     defaultSort,
-    popularHeading,
-    itemsLabel,
-    filterFootnote,
   } = config;
+
+  const { t } = useLanguage();
+  // Per-basePath dictionary section (t.movies/t.series) - both share the
+  // same {searchPlaceholder, searchAriaLabel, popularHeading, errors} shape,
+  // so every read below goes through this one indirection instead of a
+  // basePath ternary at each call site.
+  const sectionT = basePath === "series" ? t.series : t.movies;
 
   const [query, setQuery] = useState("");
   const [selectedGenres, setSelectedGenres] = useState<number[]>([]);
@@ -371,7 +380,7 @@ export function MediaExplorer<TSortBy extends string>({
       if (requestId !== blendRequestIdRef.current) return;
 
       if (!response.ok) {
-        throw new Error(data.error ?? "Failed to blend titles");
+        throw new Error(data.error ?? t.errors.failedToBlend);
       }
 
       setBlendResults(data.results);
@@ -385,7 +394,7 @@ export function MediaExplorer<TSortBy extends string>({
     } catch (err) {
       if (requestId !== blendRequestIdRef.current) return;
       if (err instanceof DOMException && err.name === "AbortError") return;
-      setBlendError(err instanceof Error ? err.message : "Failed to blend titles");
+      setBlendError(err instanceof Error ? err.message : t.errors.failedToBlend);
     } finally {
       if (requestId === blendRequestIdRef.current) {
         setBlendLoading(false);
@@ -420,7 +429,7 @@ export function MediaExplorer<TSortBy extends string>({
       if (requestId !== blendRequestIdRef.current) return;
 
       if (!response.ok) {
-        throw new Error(data.error ?? "Failed to blend titles");
+        throw new Error(data.error ?? t.errors.failedToBlend);
       }
 
       setBlendResults((prev) => [...(prev ?? []), ...data.results]);
@@ -429,7 +438,7 @@ export function MediaExplorer<TSortBy extends string>({
     } catch (err) {
       if (requestId !== blendRequestIdRef.current) return;
       if (err instanceof DOMException && err.name === "AbortError") return;
-      setBlendError(err instanceof Error ? err.message : "Failed to blend titles");
+      setBlendError(err instanceof Error ? err.message : t.errors.failedToBlend);
     } finally {
       if (requestId === blendRequestIdRef.current) {
         setBlendLoadingMore(false);
@@ -557,13 +566,13 @@ export function MediaExplorer<TSortBy extends string>({
           setMoodQuery("");
         }
         setMoodRateLimitMessage(
-          data.error ?? "Too many searches — wait a moment and try again."
+          data.error ?? t.errors.tooManySearches
         );
         return;
       }
 
       if (!response.ok) {
-        throw new Error(data.error ?? "Failed to interpret mood query");
+        throw new Error(data.error ?? t.errors.failedToInterpretMood);
       }
 
       if (isLoadMore) {
@@ -587,7 +596,7 @@ export function MediaExplorer<TSortBy extends string>({
       if (requestId !== moodRequestIdRef.current) return;
       if (err instanceof DOMException && err.name === "AbortError") return;
       setMoodError(
-        err instanceof Error ? err.message : "Failed to interpret mood query"
+        err instanceof Error ? err.message : t.errors.failedToInterpretMood
       );
     } finally {
       if (requestId === moodRequestIdRef.current) {
@@ -651,12 +660,12 @@ export function MediaExplorer<TSortBy extends string>({
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error ?? `Failed to load ${itemsLabel}`);
+        throw new Error(data.error ?? sectionT.errors.failedToLoad);
       }
 
       const results: MovieWithRatings[] = data.results ?? [];
       if (results.length === 0) {
-        setSurpriseMessage("No titles match the current filters.");
+        setSurpriseMessage(t.errors.noTitlesMatchFilters);
         return;
       }
 
@@ -664,7 +673,7 @@ export function MediaExplorer<TSortBy extends string>({
       router.push(`/${basePath}/${pick.id}`);
     } catch (err) {
       setSurpriseMessage(
-        err instanceof Error ? err.message : "Failed to pick a surprise title"
+        err instanceof Error ? err.message : t.errors.failedToPickSurprise
       );
     } finally {
       setSurpriseLoading(false);
@@ -699,7 +708,7 @@ export function MediaExplorer<TSortBy extends string>({
         if (requestId !== searchRequestIdRef.current) return;
 
         if (!response.ok) {
-          throw new Error(data.error ?? `Failed to search ${itemsLabel}`);
+          throw new Error(data.error ?? sectionT.errors.failedToSearch);
         }
 
         setSearchResults(data.results);
@@ -709,7 +718,7 @@ export function MediaExplorer<TSortBy extends string>({
         if (requestId !== searchRequestIdRef.current) return;
         if (err instanceof DOMException && err.name === "AbortError") return;
         setSearchError(
-          err instanceof Error ? err.message : `Failed to search ${itemsLabel}`
+          err instanceof Error ? err.message : sectionT.errors.failedToSearch
         );
       } finally {
         if (requestId === searchRequestIdRef.current) {
@@ -719,7 +728,8 @@ export function MediaExplorer<TSortBy extends string>({
     }, SEARCH_DEBOUNCE_MS);
 
     return () => clearTimeout(timeout);
-  }, [trimmedQuery, searchEndpoint, itemsLabel]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trimmedQuery, searchEndpoint]);
 
   async function loadMoreSearch() {
     searchAbortRef.current?.abort();
@@ -742,7 +752,7 @@ export function MediaExplorer<TSortBy extends string>({
       if (requestId !== searchRequestIdRef.current) return;
 
       if (!response.ok) {
-        throw new Error(data.error ?? `Failed to search ${itemsLabel}`);
+        throw new Error(data.error ?? sectionT.errors.failedToSearch);
       }
 
       setSearchResults((prev) => [...(prev ?? []), ...data.results]);
@@ -752,7 +762,7 @@ export function MediaExplorer<TSortBy extends string>({
       if (requestId !== searchRequestIdRef.current) return;
       if (err instanceof DOMException && err.name === "AbortError") return;
       setSearchError(
-        err instanceof Error ? err.message : `Failed to search ${itemsLabel}`
+        err instanceof Error ? err.message : sectionT.errors.failedToSearch
       );
     } finally {
       if (requestId === searchRequestIdRef.current) {
@@ -795,7 +805,7 @@ export function MediaExplorer<TSortBy extends string>({
         if (requestId !== discoverRequestIdRef.current) return;
 
         if (!response.ok) {
-          throw new Error(data.error ?? `Failed to load ${itemsLabel}`);
+          throw new Error(data.error ?? sectionT.errors.failedToLoad);
         }
 
         setDiscoverResults(data.results);
@@ -806,7 +816,7 @@ export function MediaExplorer<TSortBy extends string>({
         if (requestId !== discoverRequestIdRef.current) return;
         if (err instanceof DOMException && err.name === "AbortError") return;
         setDiscoverError(
-          err instanceof Error ? err.message : `Failed to load ${itemsLabel}`
+          err instanceof Error ? err.message : sectionT.errors.failedToLoad
         );
       } finally {
         if (requestId === discoverRequestIdRef.current) {
@@ -827,7 +837,6 @@ export function MediaExplorer<TSortBy extends string>({
     region,
     moodQuery,
     discoverEndpoint,
-    itemsLabel,
   ]);
 
   // Re-runs discovery against the mood interpretation already on hand
@@ -876,7 +885,7 @@ export function MediaExplorer<TSortBy extends string>({
       if (requestId !== discoverRequestIdRef.current) return;
 
       if (!response.ok) {
-        throw new Error(data.error ?? `Failed to load ${itemsLabel}`);
+        throw new Error(data.error ?? sectionT.errors.failedToLoad);
       }
 
       setDiscoverResults((prev) => [...(prev ?? []), ...data.results]);
@@ -887,7 +896,7 @@ export function MediaExplorer<TSortBy extends string>({
       if (requestId !== discoverRequestIdRef.current) return;
       if (err instanceof DOMException && err.name === "AbortError") return;
       setDiscoverError(
-        err instanceof Error ? err.message : `Failed to load ${itemsLabel}`
+        err instanceof Error ? err.message : sectionT.errors.failedToLoad
       );
     } finally {
       if (requestId === discoverRequestIdRef.current) {
@@ -916,7 +925,7 @@ export function MediaExplorer<TSortBy extends string>({
       if (requestId !== popularRequestIdRef.current) return;
 
       if (!response.ok) {
-        throw new Error(data.error ?? `Failed to load ${itemsLabel}`);
+        throw new Error(data.error ?? sectionT.errors.failedToLoad);
       }
 
       setPopularItems((prev) => [...prev, ...data.results]);
@@ -926,7 +935,7 @@ export function MediaExplorer<TSortBy extends string>({
       if (requestId !== popularRequestIdRef.current) return;
       if (err instanceof DOMException && err.name === "AbortError") return;
       setPopularError(
-        err instanceof Error ? err.message : `Failed to load ${itemsLabel}`
+        err instanceof Error ? err.message : sectionT.errors.failedToLoad
       );
     } finally {
       if (requestId === popularRequestIdRef.current) {
@@ -965,7 +974,7 @@ export function MediaExplorer<TSortBy extends string>({
             ? discoverResults === null
             : false;
 
-  const moodYearRangeLabel = formatYearRange(moodInterpretation?.yearRange);
+  const moodYearRangeLabel = formatYearRange(moodInterpretation?.yearRange, t);
   const moodInterpretationLabels = moodInterpretation
     ? [
         ...moodInterpretation.genreNames,
@@ -1056,19 +1065,19 @@ export function MediaExplorer<TSortBy extends string>({
   const resultsHeaderContext =
     mode === "blend"
       ? blendCaption
-        ? `Blending: ${blendCaption.titleA} + ${blendCaption.titleB}`
-        : "Blending…"
+        ? t.results.blendingCaption(blendCaption.titleA, blendCaption.titleB)
+        : t.hero.blending
       : mode === "mood"
         ? moodQuery.charAt(0).toUpperCase() + moodQuery.slice(1)
         : mode === "search"
-          ? `Results for "${trimmedQuery}"`
+          ? t.results.resultsFor(trimmedQuery)
           : mode === "discover"
-            ? "Filtered"
-            : popularHeading;
+            ? t.results.filtered
+            : sectionT.popularHeading;
   const resultsCount = mode === "discover" ? discoverTotalResults : items.length;
   const showResultsCount = mode !== "popular" && !resultsPending && !error;
   const heading = showResultsCount
-    ? `${resultsHeaderContext} · ${resultsCount} results`
+    ? t.results.heading(resultsHeaderContext, resultsCount)
     : resultsHeaderContext;
 
   function handleSwitchToBlend() {
@@ -1136,7 +1145,7 @@ export function MediaExplorer<TSortBy extends string>({
       {mode === "blend" && !blendLoading && (
         <div className="flex flex-wrap items-center gap-2 text-xs text-foreground/60">
           <button type="button" onClick={clearBlend} className="underline">
-            Clear
+            {t.common.clear}
           </button>
         </div>
       )}
@@ -1155,8 +1164,8 @@ export function MediaExplorer<TSortBy extends string>({
               type="search"
               value={query}
               onChange={(event) => updateQuery(event.target.value)}
-              placeholder={searchPlaceholder}
-              aria-label={searchPlaceholder.replace("…", "")}
+              placeholder={sectionT.searchPlaceholder}
+              aria-label={sectionT.searchAriaLabel}
               className="w-full max-w-md rounded-full border border-black/[.08] bg-transparent px-4 py-2 text-sm outline-none focus:border-foreground/40 dark:border-white/[.145]"
             />
           )}
@@ -1172,7 +1181,7 @@ export function MediaExplorer<TSortBy extends string>({
             />
             <div className="flex flex-wrap items-center gap-3">
               <label className="flex items-center gap-2 text-xs">
-                Sort by
+                {t.filters.sortBy}
                 <select
                   value={sortBy}
                   onChange={(event) => updateSortBy(event.target.value as TSortBy)}
@@ -1184,13 +1193,13 @@ export function MediaExplorer<TSortBy extends string>({
                       value={option.value}
                       className="bg-background text-foreground"
                     >
-                      {option.label}
+                      {t.sortLabels[option.value]}
                     </option>
                   ))}
                 </select>
               </label>
               <label className="flex items-center gap-2 text-xs">
-                Min IMDb
+                {t.filters.minImdb}
                 <select
                   value={minImdb}
                   onChange={(event) => updateMinImdb(event.target.value)}
@@ -1202,13 +1211,13 @@ export function MediaExplorer<TSortBy extends string>({
                       value={value}
                       className="bg-background text-foreground"
                     >
-                      {value ? `${value}+` : "Any"}
+                      {value ? `${value}+` : t.filters.any}
                     </option>
                   ))}
                 </select>
               </label>
               <label className="flex items-center gap-2 text-xs">
-                Min RT
+                {t.filters.minRt}
                 <select
                   value={minRt}
                   onChange={(event) => updateMinRt(event.target.value)}
@@ -1220,7 +1229,7 @@ export function MediaExplorer<TSortBy extends string>({
                       value={value}
                       className="bg-background text-foreground"
                     >
-                      {value ? `${value}%+` : "Any"}
+                      {value ? `${value}%+` : t.filters.any}
                     </option>
                   ))}
                 </select>
@@ -1231,14 +1240,16 @@ export function MediaExplorer<TSortBy extends string>({
               selectedProviderIds={selectedWatchProviders}
               onToggle={toggleWatchProvider}
             />
-            {filterFootnote}
+            {basePath === "series" && (
+              <p className="text-xs text-foreground/50">{t.series.ratingsFootnote}</p>
+            )}
           </FilterPanel>
         </div>
       )}
 
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium text-foreground/70">{heading}</h2>
-        {loading && <span className="text-sm text-foreground/60">Loading…</span>}
+        {loading && <span className="text-sm text-foreground/60">{t.common.loading}</span>}
       </div>
 
       {error ? (
@@ -1271,7 +1282,7 @@ export function MediaExplorer<TSortBy extends string>({
               disabled={loadingMore}
               className="mx-auto rounded-full border border-black/[.08] px-5 py-2 text-sm font-medium transition-colors hover:border-foreground/30 hover:text-foreground disabled:opacity-50 dark:border-white/[.145]"
             >
-              {loadingMore ? "Loading…" : "Load more"}
+              {loadingMore ? t.common.loading : t.common.loadMore}
             </button>
           )}
           {mode === "popular" && popularError && (

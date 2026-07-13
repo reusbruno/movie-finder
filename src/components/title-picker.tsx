@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { TMDBMovie } from "@/lib/tmdb";
+import { useLanguage } from "@/components/language-provider";
 
 const DEBOUNCE_MS = 400;
 
@@ -27,6 +28,7 @@ export function TitlePicker({
   onSelect: (title: PickedTitle) => void;
   onClear: () => void;
 }) {
+  const { t } = useLanguage();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<TMDBMovie[]>([]);
   const [loading, setLoading] = useState(false);
@@ -62,7 +64,7 @@ export function TitlePicker({
         const data = await response.json();
 
         if (requestId !== requestIdRef.current) return;
-        if (!response.ok) throw new Error(data.error ?? "Search failed");
+        if (!response.ok) throw new Error(data.error ?? t.titlePicker.searchFailed);
 
         setResults((data.results ?? []).slice(0, 8));
       } catch (err) {
@@ -77,6 +79,7 @@ export function TitlePicker({
     }, DEBOUNCE_MS);
 
     return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trimmedQuery, searchEndpoint]);
 
   useEffect(() => {
@@ -96,7 +99,7 @@ export function TitlePicker({
         <button
           type="button"
           onClick={onClear}
-          aria-label={`Clear ${selected.title}`}
+          aria-label={t.titlePicker.clear(selected.title)}
           className="text-foreground/50 hover:text-foreground"
         >
           ×
@@ -122,9 +125,9 @@ export function TitlePicker({
       {open && trimmedQuery !== "" && (
         <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-md border border-black/[.08] bg-background shadow-lg dark:border-white/[.145]">
           {loading ? (
-            <p className="px-3 py-2 text-xs text-foreground/50">Searching…</p>
+            <p className="px-3 py-2 text-xs text-foreground/50">{t.common.searching}</p>
           ) : results.length === 0 ? (
-            <p className="px-3 py-2 text-xs text-foreground/50">No matches</p>
+            <p className="px-3 py-2 text-xs text-foreground/50">{t.common.noMatches}</p>
           ) : (
             <ul>
               {results.map((result) => (

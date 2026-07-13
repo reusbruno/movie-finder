@@ -2,18 +2,19 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-
-const MODES = [
-  { href: "/movies", label: "Movies" },
-  { href: "/series", label: "Series" },
-] as const;
+import { useLanguage } from "@/components/language-provider";
 
 export function ModeToggle() {
   const pathname = usePathname();
+  const { t } = useLanguage();
+  const MODES = [
+    { href: "/movies", label: t.header.movies },
+    { href: "/series", label: t.header.series },
+  ] as const;
 
   return (
     <nav
-      aria-label="Content mode"
+      aria-label={t.header.contentModeAriaLabel}
       className="inline-flex rounded-full border border-black/[.08] p-1 dark:border-white/[.145]"
     >
       {MODES.map(({ href, label }) => {

@@ -1,3 +1,7 @@
+"use client";
+
+import { useLanguage } from "@/components/language-provider";
+
 // Display-only pills for mood search's resolved genres/keywords/year-range -
 // upgrades the old plain "Interpreted as: a, b, c" text line into
 // individually-legible chips. Non-interactive by design for now (no
@@ -9,14 +13,16 @@ export function InterpretationChips({
   labels: string[];
   onClear: () => void;
 }) {
+  const { t } = useLanguage();
+
   return (
     <div className="flex flex-col gap-1.5">
       <span className="text-xs font-medium tracking-wide text-foreground/50 uppercase">
-        Interpreted as
+        {t.interpretation.label}
       </span>
       <div className="flex flex-wrap items-center gap-1.5">
         {labels.length === 0 ? (
-          <span className="text-xs text-foreground/50">No specific filters</span>
+          <span className="text-xs text-foreground/50">{t.interpretation.noFilters}</span>
         ) : (
           labels.map((label) => (
             <span
@@ -32,7 +38,7 @@ export function InterpretationChips({
           onClick={onClear}
           className="text-xs text-foreground/50 underline hover:text-foreground"
         >
-          Clear
+          {t.common.clear}
         </button>
       </div>
     </div>

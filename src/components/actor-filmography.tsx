@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import type { TMDBCastCredit, TMDBGenre } from "@/lib/tmdb";
 import { GenreFilter } from "@/components/genre-filter";
 import { FilmographyGrid } from "@/components/filmography-grid";
+import { useLanguage } from "@/components/language-provider";
 
 export function ActorFilmography({
   credits,
@@ -12,6 +13,7 @@ export function ActorFilmography({
   credits: TMDBCastCredit[];
   genres: TMDBGenre[];
 }) {
+  const { t } = useLanguage();
   const [selectedGenres, setSelectedGenres] = useState<number[]>([]);
   const [fromYear, setFromYear] = useState("");
   const [toYear, setToYear] = useState("");
@@ -57,22 +59,22 @@ export function ActorFilmography({
         />
         <div className="flex items-center gap-3 text-sm">
           <label className="flex items-center gap-2">
-            From
+            {t.actorFilmography.from}
             <input
               type="number"
               inputMode="numeric"
-              placeholder="Year"
+              placeholder={t.actorFilmography.yearPlaceholder}
               value={fromYear}
               onChange={(event) => setFromYear(event.target.value)}
               className="w-20 rounded-md border border-black/[.08] bg-transparent px-2 py-1 outline-none focus:border-foreground/40 dark:border-white/[.145]"
             />
           </label>
           <label className="flex items-center gap-2">
-            To
+            {t.actorFilmography.to}
             <input
               type="number"
               inputMode="numeric"
-              placeholder="Year"
+              placeholder={t.actorFilmography.yearPlaceholder}
               value={toYear}
               onChange={(event) => setToYear(event.target.value)}
               className="w-20 rounded-md border border-black/[.08] bg-transparent px-2 py-1 outline-none focus:border-foreground/40 dark:border-white/[.145]"

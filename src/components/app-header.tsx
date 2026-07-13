@@ -5,9 +5,12 @@ import { usePathname } from "next/navigation";
 import type { MouseEvent } from "react";
 import { ModeToggle } from "@/components/mode-toggle";
 import { HeaderSearch } from "@/components/header-search";
+import { LanguageToggle } from "@/components/language-toggle";
+import { useLanguage } from "@/components/language-provider";
 
 export function AppHeader() {
   const pathname = usePathname();
+  const { t } = useLanguage();
 
   // MediaExplorer's mood/blend/filter state lives in plain useState, not the
   // URL - so a same-route Link click (already on /movies, the common case
@@ -49,8 +52,9 @@ export function AppHeader() {
           href="/watchlist"
           className="text-sm font-medium text-foreground/70 transition-colors hover:text-foreground"
         >
-          Watchlist
+          {t.header.watchlist}
         </Link>
+        <LanguageToggle />
         <ModeToggle />
       </div>
     </header>

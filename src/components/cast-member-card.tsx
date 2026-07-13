@@ -1,12 +1,17 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
 import type { TMDBCastMember } from "@/lib/tmdb";
+import { useLanguage } from "@/components/language-provider";
 
 const PROFILE_BASE_URL = "https://image.tmdb.org/t/p/w342";
 const PROFILE_SIZES =
   "(min-width: 1280px) 12vw, (min-width: 768px) 16vw, (min-width: 640px) 25vw, 33vw";
 
 export function CastMemberCard({ member }: { member: TMDBCastMember }) {
+  const { t } = useLanguage();
+
   return (
     <Link
       href={`/actors/${member.id}`}
@@ -22,7 +27,7 @@ export function CastMemberCard({ member }: { member: TMDBCastMember }) {
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center p-4 text-center text-sm text-foreground/60">
-          No photo available
+          {t.cast.noPhoto}
         </div>
       )}
 
@@ -32,7 +37,7 @@ export function CastMemberCard({ member }: { member: TMDBCastMember }) {
         </h3>
         {member.character && (
           <p className="line-clamp-1 pt-1 text-xs text-white/70">
-            as {member.character}
+            {t.cast.asCharacter(member.character)}
           </p>
         )}
       </div>

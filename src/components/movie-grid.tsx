@@ -1,7 +1,10 @@
+"use client";
+
 import type { MovieWithMatch } from "@/lib/match-explanation";
 import type { WatchlistMediaType } from "@/lib/watchlist";
 import { MovieCard } from "@/components/movie-card";
 import { gridItemVisibilityClass } from "@/lib/grid-visibility";
+import { useLanguage } from "@/components/language-provider";
 
 // The grid's widest breakpoint (xl:grid-cols-8) - up to this many cards can
 // sit in the first visual row depending on viewport, and the browser's
@@ -38,9 +41,11 @@ export function MovieGrid({
   // would silently discard real results rather than just tidy a row.
   trimTrailingRow?: boolean;
 }) {
+  const { t } = useLanguage();
+
   if (movies.length === 0) {
     return (
-      <p className="py-16 text-center text-foreground/60">No movies found.</p>
+      <p className="py-16 text-center text-foreground/60">{t.grid.noResults}</p>
     );
   }
 

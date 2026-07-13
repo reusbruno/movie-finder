@@ -2,6 +2,7 @@
 
 import { Shuffle, Sparkles, SlidersHorizontal } from "lucide-react";
 import { TitlePicker, type PickedTitle } from "@/components/title-picker";
+import { useLanguage } from "@/components/language-provider";
 
 // The one deliberately loud element on the browse page: centered heading,
 // a single primary (gold) button for whichever action currently occupies
@@ -64,6 +65,7 @@ export function HeroSearch({
   filtersRevealed: boolean;
   filtersBadgeCount: number;
 }) {
+  const { t } = useLanguage();
   const blendDuplicate =
     blendTitleA !== null && blendTitleB !== null && blendTitleA.id === blendTitleB.id;
   const blendDisabled = !blendTitleA || !blendTitleB || blendDuplicate;
@@ -71,7 +73,7 @@ export function HeroSearch({
   return (
     <div className="flex flex-col items-center gap-4 py-4 text-center">
       <h1 className="font-display text-xl tracking-wide">
-        What are you in the mood for?
+        {t.hero.heading}
       </h1>
 
       {heroView === "mood" ? (
@@ -86,8 +88,8 @@ export function HeroSearch({
             type="text"
             value={moodInput}
             onChange={(event) => onMoodInputChange(event.target.value)}
-            placeholder="Describe a mood… e.g. slow melancholic sci-fi"
-            aria-label="Mood search"
+            placeholder={t.hero.moodPlaceholder}
+            aria-label={t.hero.moodAriaLabel}
             disabled={!moodAvailable}
             className="min-w-0 flex-1 rounded-full border border-black/[.08] bg-transparent px-4 py-2 text-sm outline-none focus:border-foreground/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/[.145]"
           />
@@ -96,7 +98,7 @@ export function HeroSearch({
             disabled={!moodAvailable || !moodInput.trim()}
             className={PRIMARY_BUTTON_CLASS}
           >
-            {moodLoading ? "Thinking…" : "Find"}
+            {moodLoading ? t.hero.thinking : t.hero.find}
           </button>
         </form>
       ) : (
@@ -104,7 +106,7 @@ export function HeroSearch({
           <div className="flex w-full flex-wrap items-center justify-center gap-2">
             <TitlePicker
               searchEndpoint={searchEndpoint}
-              placeholder="First title…"
+              placeholder={t.hero.firstTitle}
               selected={blendTitleA}
               onSelect={onSelectBlendA}
               onClear={onClearBlendA}
@@ -112,7 +114,7 @@ export function HeroSearch({
             <span className="text-sm text-foreground/50">+</span>
             <TitlePicker
               searchEndpoint={searchEndpoint}
-              placeholder="Second title…"
+              placeholder={t.hero.secondTitle}
               selected={blendTitleB}
               onSelect={onSelectBlendB}
               onClear={onClearBlendB}
@@ -123,20 +125,20 @@ export function HeroSearch({
               disabled={blendDisabled}
               className={PRIMARY_BUTTON_CLASS}
             >
-              {blendLoading ? "Blending…" : "Blend"}
+              {blendLoading ? t.hero.blending : t.hero.blend}
             </button>
           </div>
           {blendDuplicate && (
-            <p className="text-xs text-foreground/50">Pick two different titles to blend</p>
+            <p className="text-xs text-foreground/50">{t.hero.pickTwoDifferent}</p>
           )}
           <button type="button" onClick={onBackToMood} className="text-xs text-foreground/50 underline">
-            ← Mood search
+            {t.hero.backToMood}
           </button>
         </div>
       )}
 
       {moodAvailable === false && heroView === "mood" && (
-        <p className="text-xs text-foreground/50">Mood search — coming soon</p>
+        <p className="text-xs text-foreground/50">{t.hero.moodComingSoon}</p>
       )}
       {moodRateLimitMessage && heroView === "mood" && (
         <p className="text-xs text-foreground/50">{moodRateLimitMessage}</p>
@@ -145,7 +147,7 @@ export function HeroSearch({
       <div className="flex flex-wrap items-center justify-center gap-5">
         <button type="button" onClick={onSwitchToBlend} className={QUIET_ENTRY_CLASS}>
           <Shuffle className="h-3.5 w-3.5" aria-hidden="true" />
-          Blend two titles
+          {t.hero.blendTwoTitles}
         </button>
         <button
           type="button"
@@ -154,11 +156,11 @@ export function HeroSearch({
           className={`${QUIET_ENTRY_CLASS} disabled:cursor-not-allowed disabled:opacity-50`}
         >
           <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-          {surpriseLoading ? "Picking…" : "Surprise me"}
+          {surpriseLoading ? t.hero.picking : t.hero.surpriseMe}
         </button>
         <button type="button" onClick={onToggleFilters} className={QUIET_ENTRY_CLASS}>
           <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
-          Browse with filters
+          {t.hero.browseWithFilters}
           {!filtersRevealed && filtersBadgeCount > 0 && (
             <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold text-accent-foreground">
               {filtersBadgeCount}

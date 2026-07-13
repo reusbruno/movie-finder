@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Search } from "lucide-react";
 import type { TMDBMovie, TMDBPerson } from "@/lib/tmdb";
+import { useLanguage } from "@/components/language-provider";
 
 const DEBOUNCE_MS = 400;
 const MAX_TITLE_RESULTS = 8;
@@ -22,6 +23,7 @@ const MAX_PEOPLE_RESULTS = 4;
 export function HeaderSearch() {
   const pathname = usePathname();
   const router = useRouter();
+  const { t } = useLanguage();
   const basePath = pathname?.startsWith("/series") ? "series" : "movies";
   const searchEndpoint = basePath === "series" ? "/api/tv/search" : "/api/movies/search";
 
@@ -121,7 +123,7 @@ export function HeaderSearch() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label="Search titles and people"
+        aria-label={t.header.searchTitlesAndPeople}
         className="text-foreground/60 transition-colors hover:text-foreground"
       >
         <Search className="h-4 w-4" />
@@ -151,8 +153,8 @@ export function HeaderSearch() {
             }
           }
         }}
-        placeholder="Search titles…"
-        aria-label="Search titles and people"
+        placeholder={t.header.searchTitlesPlaceholder}
+        aria-label={t.header.searchTitlesAndPeople}
         className="w-48 rounded-full border border-black/[.08] bg-transparent px-3 py-1.5 text-sm outline-none focus:border-foreground/40 dark:border-white/[.145]"
       />
       {/* Anchored to the input's left edge on narrow viewports - right-0
@@ -164,9 +166,9 @@ export function HeaderSearch() {
       {trimmedQuery !== "" && (
         <div className="absolute left-0 z-10 mt-1 max-h-96 w-64 overflow-y-auto rounded-md border border-black/[.08] bg-background shadow-lg sm:left-auto sm:right-0 dark:border-white/[.145]">
           {loading ? (
-            <p className="px-3 py-2 text-xs text-foreground/50">Searching…</p>
+            <p className="px-3 py-2 text-xs text-foreground/50">{t.common.searching}</p>
           ) : titleResults.length === 0 && peopleResults.length === 0 ? (
-            <p className="px-3 py-2 text-xs text-foreground/50">No matches</p>
+            <p className="px-3 py-2 text-xs text-foreground/50">{t.common.noMatches}</p>
           ) : (
             <>
               {titleResults.length > 0 && (
@@ -198,7 +200,7 @@ export function HeaderSearch() {
                   }
                 >
                   <p className="px-3 pt-2 text-xs font-medium tracking-wide text-foreground/50 uppercase">
-                    People
+                    {t.header.people}
                   </p>
                   <ul>
                     {peopleResults.map((person) => (

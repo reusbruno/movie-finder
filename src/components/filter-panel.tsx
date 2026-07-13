@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { SlidersHorizontal } from "lucide-react";
+import { useLanguage } from "@/components/language-provider";
 
 export function FilterPanel({
   activeCount,
@@ -18,6 +19,8 @@ export function FilterPanel({
   onToggle: () => void;
   children: ReactNode;
 }) {
+  const { t } = useLanguage();
+
   return (
     <>
       <button
@@ -31,7 +34,7 @@ export function FilterPanel({
         }`}
       >
         <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
-        Filters
+        {t.filters.panel}
         {activeCount > 0 && (
           <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1 text-xs font-semibold text-accent-foreground">
             {activeCount}

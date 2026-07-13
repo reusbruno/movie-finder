@@ -1,3 +1,5 @@
+"use client";
+
 import {
   Baby,
   Camera,
@@ -28,6 +30,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { TMDBGenre } from "@/lib/tmdb";
+import { useLanguage } from "@/components/language-provider";
 
 const GENRE_ICONS: Record<string, LucideIcon> = {
   // Movie genres
@@ -70,12 +73,14 @@ export function GenreFilter({
   selectedGenreIds: number[];
   onToggle: (id: number) => void;
 }) {
+  const { t } = useLanguage();
+
   return (
     <div className="flex flex-col gap-2">
       <span className="text-xs font-medium tracking-wide text-foreground/50 uppercase">
-        Genres
+        {t.filters.genres}
       </span>
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Genres">
+      <div className="flex flex-wrap gap-2" role="group" aria-label={t.filters.genres}>
         {genres.map((genre) => {
           const Icon = GENRE_ICONS[genre.name] ?? Film;
           const selected = selectedGenreIds.includes(genre.id);

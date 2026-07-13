@@ -1,12 +1,16 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
 import type { TMDBCastCredit } from "@/lib/tmdb";
+import { useLanguage } from "@/components/language-provider";
 
 const POSTER_BASE_URL = "https://image.tmdb.org/t/p/w500";
 const POSTER_SIZES =
   "(min-width: 1280px) 12vw, (min-width: 768px) 16vw, (min-width: 640px) 25vw, 33vw";
 
 export function FilmographyCard({ credit }: { credit: TMDBCastCredit }) {
+  const { t } = useLanguage();
   const year = credit.release_date ? credit.release_date.slice(0, 4) : null;
   const isTV = credit.media_type === "tv";
 
@@ -18,14 +22,14 @@ export function FilmographyCard({ credit }: { credit: TMDBCastCredit }) {
       {credit.poster_path ? (
         <Image
           src={`${POSTER_BASE_URL}${credit.poster_path}`}
-          alt={`${credit.title} poster`}
+          alt={t.watchlistButton.posterAlt(credit.title)}
           fill
           sizes={POSTER_SIZES}
           className="object-cover"
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center p-4 text-center text-sm text-foreground/60">
-          No poster available
+          {t.common.noPosterAvailable}
         </div>
       )}
 
@@ -36,12 +40,12 @@ export function FilmographyCard({ credit }: { credit: TMDBCastCredit }) {
         <div className="grid grid-rows-[0fr] opacity-0 transition-all duration-200 ease-out group-hover:grid-rows-[1fr] group-hover:opacity-100 group-focus-visible:grid-rows-[1fr] group-focus-visible:opacity-100">
           <div className="overflow-hidden">
             <p className="pt-1 text-xs text-white/70">
-              {year ?? "Unknown year"}
-              {isTV ? " · TV" : ""}
+              {year ?? t.common.unknownYear}
+              {isTV ? t.filmography.tvSuffix : ""}
             </p>
             {credit.character && (
               <p className="line-clamp-1 text-xs text-white/70">
-                as {credit.character}
+                {t.cast.asCharacter(credit.character)}
               </p>
             )}
           </div>

@@ -5,10 +5,12 @@ import type { MovieWithRatings } from "@/lib/ratings";
 import type { WatchlistMediaType } from "@/lib/watchlist";
 import { useWatchlist } from "@/lib/use-watchlist";
 import { MovieGrid } from "@/components/movie-grid";
+import { useLanguage } from "@/components/language-provider";
 
 type EnrichedItem = MovieWithRatings & { mediaType: WatchlistMediaType };
 
 export function WatchlistView() {
+  const { t } = useLanguage();
   const { items } = useWatchlist();
   const [results, setResults] = useState<EnrichedItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +32,7 @@ export function WatchlistView() {
       }),
     })
       .then((response) => {
-        if (!response.ok) throw new Error("Failed to load watchlist");
+        if (!response.ok) throw new Error(t.watchlist.loadError);
         return response.json();
       })
       .then((data: { items: EnrichedItem[] }) => {
@@ -40,7 +42,7 @@ export function WatchlistView() {
         }
       })
       .catch(() => {
-        if (!cancelled) setError("Failed to load your watchlist. Try refreshing.");
+        if (!cancelled) setError(t.watchlist.loadError);
       });
 
     return () => {
@@ -57,15 +59,15 @@ export function WatchlistView() {
 
   return (
     <div className="flex flex-1 flex-col gap-6 px-6 py-8">
-      <h1 className="font-display text-xl tracking-wide">Watchlist</h1>
+      <h1 className="font-display text-xl tracking-wide">{t.header.watchlist}</h1>
       {isEmpty ? (
         <p className="py-16 text-center text-foreground/60">
-          Your watchlist is empty. Add titles from any movie or show card.
+          {t.watchlist.empty}
         </p>
       ) : error ? (
         <p className="py-16 text-center text-foreground/60">{error}</p>
       ) : isLoading ? (
-        <p className="py-16 text-center text-foreground/60">Loading…</p>
+        <p className="py-16 text-center text-foreground/60">{t.common.loading}</p>
       ) : (
         <MovieGrid movies={results ?? []} eagerFirstRow />
       )}

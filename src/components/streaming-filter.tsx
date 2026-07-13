@@ -1,4 +1,7 @@
+"use client";
+
 import { STREAMING_PROVIDERS, type WatchRegion } from "@/lib/watch-providers";
+import { useLanguage } from "@/components/language-provider";
 
 export function StreamingFilter({
   region,
@@ -9,14 +12,15 @@ export function StreamingFilter({
   selectedProviderIds: number[];
   onToggle: (id: number) => void;
 }) {
+  const { t } = useLanguage();
   const providers = STREAMING_PROVIDERS[region];
 
   return (
     <div className="flex flex-col gap-2">
       <span className="text-xs font-medium tracking-wide text-foreground/50 uppercase">
-        Streaming on
+        {t.filters.streamingOn}
       </span>
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Streaming on">
+      <div className="flex flex-wrap gap-2" role="group" aria-label={t.filters.streamingOn}>
         {providers.map((provider) => {
           const selected = selectedProviderIds.includes(provider.id);
 

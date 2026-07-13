@@ -5,14 +5,9 @@ import Image from "next/image";
 import type { TMDBWatchProvidersRegion } from "@/lib/tmdb";
 import { WATCH_REGIONS, type WatchRegion } from "@/lib/watch-providers";
 import { useWatchRegion } from "@/lib/use-watch-region";
+import { useLanguage } from "@/components/language-provider";
 
 const LOGO_BASE_URL = "https://image.tmdb.org/t/p/w92";
-
-const CATEGORIES = [
-  { key: "flatrate", label: "Stream" },
-  { key: "rent", label: "Rent" },
-  { key: "buy", label: "Buy" },
-] as const;
 
 export function WatchProviders({
   mediaType,
@@ -28,8 +23,14 @@ export function WatchProviders({
   initialRegion: WatchRegion;
   initialData: TMDBWatchProvidersRegion | null;
 }) {
+  const { t } = useLanguage();
   const { region, setRegion } = useWatchRegion();
   const [data, setData] = useState(initialData);
+  const CATEGORIES = [
+    { key: "flatrate" as const, label: t.watchProviders.stream },
+    { key: "rent" as const, label: t.watchProviders.rent },
+    { key: "buy" as const, label: t.watchProviders.buy },
+  ];
   // Tracks which region `data` actually reflects, so a mismatch against the
   // (possibly just-changed) selected region is exactly "a fetch for the
   // new region is needed" - covers both an explicit dropdown change and a
@@ -75,21 +76,21 @@ export function WatchProviders({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-3">
-        <h2 className="font-display text-lg tracking-wide">Where to watch</h2>
+        <h2 className="font-display text-lg tracking-wide">{t.watchProviders.whereToWatch}</h2>
         <select
           value={region}
           onChange={(event) => setRegion(event.target.value as WatchRegion)}
-          aria-label="Region"
+          aria-label={t.watchProviders.region}
           className="rounded-md border border-black/[.08] bg-transparent px-2 py-1 text-xs text-foreground outline-none focus:border-foreground/40 dark:border-white/[.145]"
         >
-          {WATCH_REGIONS.map(({ code, label }) => (
+          {WATCH_REGIONS.map(({ code }) => (
             <option key={code} value={code} className="bg-background text-foreground">
-              {label}
+              {t.watchRegionLabels[code]}
             </option>
           ))}
         </select>
         {region !== loadedRegion && (
-          <span className="text-xs text-foreground/50">Loading…</span>
+          <span className="text-xs text-foreground/50">{t.common.loading}</span>
         )}
       </div>
       {groups.length > 0 && (
@@ -124,7 +125,7 @@ export function WatchProviders({
               rel="noopener noreferrer"
               className="w-fit text-xs text-foreground/60 hover:text-foreground"
             >
-              More info on TMDB →
+              {t.watchProviders.moreInfoOnTmdb}
             </a>
           )}
         </>

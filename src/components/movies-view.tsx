@@ -9,16 +9,13 @@ const MOVIES_CONFIG: MediaExplorerConfig<MovieSortBy> = {
   moodSearchEndpoint: "/api/movies/mood-search",
   vibeBlendEndpoint: "/api/movies/vibe-blend",
   popularEndpoint: "/api/movies/popular",
-  searchPlaceholder: "Search movies…",
   sortOptions: [
-    { value: "popularity.desc", label: "Popularity" },
-    { value: "vote_average.desc", label: "Top Rated" },
-    { value: "primary_release_date.desc", label: "Newest" },
-    { value: "title.asc", label: "Title (A-Z)" },
+    { value: "popularity.desc" },
+    { value: "vote_average.desc" },
+    { value: "primary_release_date.desc" },
+    { value: "title.asc" },
   ],
   defaultSort: "popularity.desc",
-  popularHeading: "Popular movies",
-  itemsLabel: "movies",
 };
 
 export function MoviesView({

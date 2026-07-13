@@ -8,6 +8,7 @@ import type { MovieWithMatch } from "@/lib/match-explanation";
 import { useWatchlist } from "@/lib/use-watchlist";
 import type { WatchlistMediaType } from "@/lib/watchlist";
 import { ScoreBadges } from "@/components/score-badges";
+import { useLanguage } from "@/components/language-provider";
 
 function WatchlistButton({
   id,
@@ -20,6 +21,7 @@ function WatchlistButton({
   title: string;
   posterPath: string | null;
 }) {
+  const { t } = useLanguage();
   const { has, add, remove } = useWatchlist();
   const saved = has(id, mediaType);
 
@@ -38,8 +40,8 @@ function WatchlistButton({
       type="button"
       onClick={handleClick}
       aria-pressed={saved}
-      aria-label={saved ? `Remove ${title} from watchlist` : `Add ${title} to watchlist`}
-      title={saved ? "Remove from watchlist" : "Add to watchlist"}
+      aria-label={saved ? t.watchlistButton.removeAria(title) : t.watchlistButton.addAria(title)}
+      title={saved ? t.watchlistButton.removeTooltip : t.watchlistButton.addTooltip}
       className="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition-colors hover:bg-black/80"
     >
       <Bookmark className="h-3.5 w-3.5" fill={saved ? "currentColor" : "none"} />
@@ -72,6 +74,7 @@ export function MovieCard({
   // particular card has a matchExplanation to expand.
   canExplainMore?: boolean;
 }) {
+  const { t } = useLanguage();
   const year = movie.release_date ? movie.release_date.slice(0, 4) : null;
   const mediaType: WatchlistMediaType = movie.mediaType ?? (basePath === "series" ? "tv" : "movie");
   const cardBasePath = movie.mediaType ? (movie.mediaType === "tv" ? "series" : "movies") : basePath;
@@ -100,12 +103,12 @@ export function MovieCard({
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error ?? "Failed to expand explanation");
+        throw new Error(data.error ?? t.explain.failedToExpand);
       }
 
       setExpanded(data.text);
     } catch (err) {
-      setExpandError(err instanceof Error ? err.message : "Failed to expand explanation");
+      setExpandError(err instanceof Error ? err.message : t.explain.failedToExpand);
     } finally {
       setExpanding(false);
     }
@@ -125,7 +128,7 @@ export function MovieCard({
       {movie.poster_path ? (
         <Image
           src={`${POSTER_BASE_URL}${movie.poster_path}`}
-          alt={`${movie.title} poster`}
+          alt={t.watchlistButton.posterAlt(movie.title)}
           fill
           sizes={POSTER_SIZES}
           loading={eager ? "eager" : "lazy"}
@@ -133,7 +136,7 @@ export function MovieCard({
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center p-4 text-center text-sm text-foreground/60">
-          No poster available
+          {t.common.noPosterAvailable}
         </div>
       )}
 
@@ -144,7 +147,7 @@ export function MovieCard({
         <div className="grid grid-rows-[0fr] opacity-0 transition-all duration-200 ease-out group-hover:grid-rows-[1fr] group-hover:opacity-100 group-focus-visible:grid-rows-[1fr] group-focus-visible:opacity-100">
           <div className="overflow-hidden">
             <p className="pt-1 text-xs text-white/70">
-              {year ?? "Unknown year"}
+              {year ?? t.common.unknownYear}
             </p>
             <p className="text-xs text-white/80">
               <ScoreBadges
@@ -166,7 +169,7 @@ export function MovieCard({
                     title={expandError ?? undefined}
                     className="text-[10px] text-white/50 underline hover:text-white/80 disabled:no-underline disabled:opacity-60"
                   >
-                    {expanding ? "Expanding…" : expandError ? "Try again" : "Explain more"}
+                    {expanding ? t.explain.expanding : expandError ? t.common.tryAgain : t.explain.explainMore}
                   </button>
                 )}
               </div>

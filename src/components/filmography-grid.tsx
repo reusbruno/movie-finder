@@ -1,12 +1,17 @@
+"use client";
+
 import type { TMDBCastCredit } from "@/lib/tmdb";
 import { FilmographyCard } from "@/components/filmography-card";
 import { gridItemVisibilityClass } from "@/lib/grid-visibility";
+import { useLanguage } from "@/components/language-provider";
 
 export function FilmographyGrid({ credits }: { credits: TMDBCastCredit[] }) {
+  const { t } = useLanguage();
+
   if (credits.length === 0) {
     return (
       <p className="py-16 text-center text-foreground/60">
-        No movies match these filters.
+        {t.filmography.noResults}
       </p>
     );
   }
