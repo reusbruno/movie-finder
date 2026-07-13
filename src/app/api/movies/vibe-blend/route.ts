@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const idA = Number(searchParams.get("a"));
   const idB = Number(searchParams.get("b"));
+  const pageParam = searchParams.get("page");
 
   if (!Number.isInteger(idA) || idA <= 0 || !Number.isInteger(idB) || idB <= 0) {
     return NextResponse.json(
@@ -21,14 +22,32 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // Which MAX_ENRICHED_BLEND_RESULTS-sized slice of the already-scored pool
+  // to return - blendTitles' own candidate pool is a single TMDB discover
+  // page (~20 titles minus the two seeds), already fully scored and sorted
+  // in one call, so Load More just asks for a later slice of the SAME pool
+  // rather than deepening the discover fetch or re-scoring.
+  let page = 1;
+  if (pageParam !== null) {
+    page = Number(pageParam);
+    if (!Number.isInteger(page) || page < 1) {
+      return NextResponse.json(
+        { error: "Query parameter 'page' must be a positive integer" },
+        { status: 400 }
+      );
+    }
+  }
+
   try {
     const blend = await blendTitles(idA, idB, "movie");
-    const topResults = blend.results.slice(0, MAX_ENRICHED_BLEND_RESULTS);
+    const start = (page - 1) * MAX_ENRICHED_BLEND_RESULTS;
+    const topResults = blend.results.slice(start, start + MAX_ENRICHED_BLEND_RESULTS);
     const enriched = await enrichMoviesWithRatings(topResults);
     return NextResponse.json({
       results: enriched,
       titleA: blend.titleA,
       titleB: blend.titleB,
+      hasMore: start + MAX_ENRICHED_BLEND_RESULTS < blend.results.length,
     });
   } catch (error) {
     if (error instanceof VibeBlendError) {

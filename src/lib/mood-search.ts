@@ -498,7 +498,12 @@ const MIN_MOOD_RESULTS = 10;
 // against the FULL original keyword set below, so bulk-only members still
 // get credit for any keyword they happen to carry.
 const POOL_PAGES = 3;
-const MOOD_RESULTS_LIMIT = 20;
+// The already-scored pool this file builds is 40-60 candidates deep (see the
+// union comment above) but only one page of it ships per request - Load More
+// asks for a later page of the SAME deterministic pool (see the `page`
+// parameter on discoverAndRankMoodPool below) rather than fetching more TMDB
+// pages or re-ranking, so no new Anthropic call and no reordering.
+const MOOD_PAGE_SIZE = 20;
 // Same value as tmdb.ts's TOP_RATED_MIN_VOTE_COUNT, applied here regardless
 // of sort (not just for vote_average.desc) - a pool candidate's genre/
 // keyword tagging (and its vote_average, used as a rerank tiebreaker) isn't
@@ -552,10 +557,18 @@ export async function discoverAndRankMoodPool(
   avoidGenreIds: number[],
   genreNames: Map<number, string>,
   keywordNames: Map<number, string>,
-  mediaType: "movie" | "tv"
+  mediaType: "movie" | "tv",
+  // Which MOOD_PAGE_SIZE-sized window of the ranked pool to return - 1 is
+  // the original top tier, 2+ is Load More asking for the next tier of the
+  // SAME pool. The pool itself (precision+bulk fetch, keyword lookups,
+  // scoring) is rebuilt identically regardless of page - deterministic given
+  // the same inputs, so a later page is genuinely "the next slice of the
+  // already-ranked pool," not a new interpretation or a different ranking.
+  page: number = 1
 ): Promise<{
   results: (TMDBMovie & { matchExplanation: string | null })[];
   appliedGenreIds: number[];
+  hasMore: boolean;
 }> {
   // The precision pool always uses the most specific attempt (genreAttempts[0]
   // - mood's own genres, or mood+user combined when a genre is overridden)
@@ -635,10 +648,12 @@ export async function discoverAndRankMoodPool(
   // implicit tiebreak - same pattern vibe-blend.ts already relies on.
   scored.sort((a, b) => b.score - a.score);
 
+  const offset = (page - 1) * MOOD_PAGE_SIZE;
   return {
     results: scored
-      .slice(0, MOOD_RESULTS_LIMIT)
+      .slice(offset, offset + MOOD_PAGE_SIZE)
       .map((entry) => ({ ...entry.candidate, matchExplanation: entry.matchExplanation })),
     appliedGenreIds: bulkAttempt.genreIds,
+    hasMore: offset + MOOD_PAGE_SIZE < scored.length,
   };
 }

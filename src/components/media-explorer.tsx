@@ -138,6 +138,14 @@ export function MediaExplorer<TSortBy extends string>({
     null
   );
   const [moodLoading, setMoodLoading] = useState(false);
+  // Which MOOD_PAGE_SIZE-sized tier of the already-ranked server-side pool
+  // is currently loaded, and whether the pool has more beyond it (from the
+  // response's own hasMore, not derived client-side - the pool's true depth
+  // is only known server-side). Reset to page 1 on every fresh/cached
+  // (non-load-more) fetch - see runMoodDiscovery.
+  const [moodPage, setMoodPage] = useState(1);
+  const [moodHasMore, setMoodHasMore] = useState(false);
+  const [moodLoadingMore, setMoodLoadingMore] = useState(false);
   const [moodError, setMoodError] = useState<string | null>(null);
   // Separate from moodError: a 429 is an expected, self-inflicted,
   // transient state (same category as surpriseMessage below), not a real
@@ -170,6 +178,13 @@ export function MediaExplorer<TSortBy extends string>({
     titleB: string;
   } | null>(null);
   const [blendLoading, setBlendLoading] = useState(false);
+  // See moodPage/moodHasMore above - same shape, applied to blend's own
+  // already-scored candidate pool (a single TMDB discover page, fully
+  // scored in one call - Load More reveals a later slice of it, not a
+  // deeper fetch).
+  const [blendPage, setBlendPage] = useState(1);
+  const [blendHasMore, setBlendHasMore] = useState(false);
+  const [blendLoadingMore, setBlendLoadingMore] = useState(false);
   const [blendError, setBlendError] = useState<string | null>(null);
   const blendAbortRef = useRef<AbortController | null>(null);
   const blendRequestIdRef = useRef(0);
@@ -178,6 +193,11 @@ export function MediaExplorer<TSortBy extends string>({
     null
   );
   const [searchLoading, setSearchLoading] = useState(false);
+  // TMDB's own paginated search endpoint - same shape as Popular/Discover's
+  // own page tracking below.
+  const [searchPage, setSearchPage] = useState(1);
+  const [searchTotalPages, setSearchTotalPages] = useState(1);
+  const [searchLoadingMore, setSearchLoadingMore] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const searchAbortRef = useRef<AbortController | null>(null);
   // Guards against a stale (superseded but not-yet-settled) request
@@ -272,6 +292,9 @@ export function MediaExplorer<TSortBy extends string>({
     setMoodError(null);
     setMoodRateLimitMessage(null);
     setMoodLoading(false);
+    setMoodPage(1);
+    setMoodHasMore(false);
+    setMoodLoadingMore(false);
   }
 
   // Snapshot of the filter state a mood fetch is about to reflect - genre/
@@ -312,6 +335,9 @@ export function MediaExplorer<TSortBy extends string>({
     setBlendCaption(null);
     setBlendError(null);
     setBlendLoading(false);
+    setBlendPage(1);
+    setBlendHasMore(false);
+    setBlendLoadingMore(false);
   }
 
   async function submitBlend() {
@@ -354,6 +380,8 @@ export function MediaExplorer<TSortBy extends string>({
           ? { titleA: data.titleA.title, titleB: data.titleB.title }
           : null
       );
+      setBlendPage(1);
+      setBlendHasMore(Boolean(data.hasMore));
     } catch (err) {
       if (requestId !== blendRequestIdRef.current) return;
       if (err instanceof DOMException && err.name === "AbortError") return;
@@ -361,6 +389,50 @@ export function MediaExplorer<TSortBy extends string>({
     } finally {
       if (requestId === blendRequestIdRef.current) {
         setBlendLoading(false);
+      }
+    }
+  }
+
+  async function loadMoreBlend() {
+    if (!blendTitleA || !blendTitleB) return;
+
+    blendAbortRef.current?.abort();
+    const controller = new AbortController();
+    blendAbortRef.current = controller;
+    const requestId = ++blendRequestIdRef.current;
+
+    const nextPage = blendPage + 1;
+
+    setBlendLoadingMore(true);
+    setBlendError(null);
+
+    try {
+      const params = new URLSearchParams({
+        a: String(blendTitleA.id),
+        b: String(blendTitleB.id),
+        page: String(nextPage),
+      });
+      const response = await fetch(`${vibeBlendEndpoint}?${params.toString()}`, {
+        signal: controller.signal,
+      });
+      const data = await response.json();
+
+      if (requestId !== blendRequestIdRef.current) return;
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Failed to blend titles");
+      }
+
+      setBlendResults((prev) => [...(prev ?? []), ...data.results]);
+      setBlendPage(nextPage);
+      setBlendHasMore(Boolean(data.hasMore));
+    } catch (err) {
+      if (requestId !== blendRequestIdRef.current) return;
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      setBlendError(err instanceof Error ? err.message : "Failed to blend titles");
+    } finally {
+      if (requestId === blendRequestIdRef.current) {
+        setBlendLoadingMore(false);
       }
     }
   }
@@ -428,8 +500,17 @@ export function MediaExplorer<TSortBy extends string>({
   // overrides either way, so a filter set before a fresh mood submit is
   // respected immediately rather than only applying on the next change.
   async function runMoodDiscovery(
-    payloadBase: { query: string } | { cachedInterpretation: ResolvedMoodParams }
+    payloadBase: { query: string } | { cachedInterpretation: ResolvedMoodParams },
+    options: { page?: number } = {}
   ) {
+    const page = options.page ?? 1;
+    // page > 1 is Load More asking for the next tier of the already-ranked
+    // pool - appends to moodResults and uses its own loading flag (so the
+    // existing grid stays visible, undimmed, same pattern as
+    // loadMoreDiscover/loadMorePopular) instead of replacing everything and
+    // flipping the whole-grid moodLoading dim.
+    const isLoadMore = page > 1;
+
     moodAbortRef.current?.abort();
     const controller = new AbortController();
     moodAbortRef.current = controller;
@@ -446,7 +527,11 @@ export function MediaExplorer<TSortBy extends string>({
     }
 
     moodFetchKeyRef.current = currentFilterKey();
-    setMoodLoading(true);
+    if (isLoadMore) {
+      setMoodLoadingMore(true);
+    } else {
+      setMoodLoading(true);
+    }
     setMoodError(null);
     setMoodRateLimitMessage(null);
 
@@ -454,7 +539,7 @@ export function MediaExplorer<TSortBy extends string>({
       const response = await fetch(moodSearchEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...payloadBase, ...moodFilterOverrides() }),
+        body: JSON.stringify({ ...payloadBase, ...moodFilterOverrides(), page }),
         signal: controller.signal,
       });
       const data = await response.json();
@@ -466,7 +551,8 @@ export function MediaExplorer<TSortBy extends string>({
         // mode stuck on "mood" with moodResults forever null - that would
         // pin the grid on its loading skeleton with no way out, which
         // reads as broken, not as "wait a moment". Only the fresh-query
-        // path can actually hit this (the cached path isn't rate-limited).
+        // path can actually hit this (the cached path isn't rate-limited,
+        // and neither is Load More - it always sends cachedInterpretation).
         if ("query" in payloadBase) {
           setMoodQuery("");
         }
@@ -480,16 +566,23 @@ export function MediaExplorer<TSortBy extends string>({
         throw new Error(data.error ?? "Failed to interpret mood query");
       }
 
-      setMoodResults(data.results);
-      setMoodInterpretation(data.interpretation ?? null);
-      setMoodResolvedParams(data.resolvedParams ?? null);
-      // Only the fresh-query path re-anchors which query this interpretation
-      // belongs to - the cachedInterpretation path reuses the same
-      // interpretation the original query already resolved, so the anchor
-      // it set stays correct and shouldn't move.
-      if ("query" in payloadBase) {
-        moodResolvedQueryRef.current = payloadBase.query;
+      if (isLoadMore) {
+        setMoodResults((prev) => [...(prev ?? []), ...data.results]);
+      } else {
+        setMoodResults(data.results);
+        setMoodInterpretation(data.interpretation ?? null);
+        setMoodResolvedParams(data.resolvedParams ?? null);
+        // Only the fresh-query path re-anchors which query this
+        // interpretation belongs to - the cachedInterpretation path (both
+        // a filter change and Load More use it) reuses the same
+        // interpretation the original query already resolved, so the
+        // anchor it set stays correct and shouldn't move.
+        if ("query" in payloadBase) {
+          moodResolvedQueryRef.current = payloadBase.query;
+        }
       }
+      setMoodPage(page);
+      setMoodHasMore(Boolean(data.hasMore));
     } catch (err) {
       if (requestId !== moodRequestIdRef.current) return;
       if (err instanceof DOMException && err.name === "AbortError") return;
@@ -498,7 +591,11 @@ export function MediaExplorer<TSortBy extends string>({
       );
     } finally {
       if (requestId === moodRequestIdRef.current) {
-        setMoodLoading(false);
+        if (isLoadMore) {
+          setMoodLoadingMore(false);
+        } else {
+          setMoodLoading(false);
+        }
       }
     }
   }
@@ -511,6 +608,11 @@ export function MediaExplorer<TSortBy extends string>({
     setQuery("");
     setMoodQuery(trimmed);
     await runMoodDiscovery({ query: trimmed });
+  }
+
+  function loadMoreMood() {
+    if (!moodResolvedParams) return;
+    runMoodDiscovery({ cachedInterpretation: moodResolvedParams }, { page: moodPage + 1 });
   }
 
   function buildDiscoverParams(targetPage: number) {
@@ -601,6 +703,8 @@ export function MediaExplorer<TSortBy extends string>({
         }
 
         setSearchResults(data.results);
+        setSearchPage(1);
+        setSearchTotalPages(data.total_pages ?? 1);
       } catch (err) {
         if (requestId !== searchRequestIdRef.current) return;
         if (err instanceof DOMException && err.name === "AbortError") return;
@@ -616,6 +720,46 @@ export function MediaExplorer<TSortBy extends string>({
 
     return () => clearTimeout(timeout);
   }, [trimmedQuery, searchEndpoint, itemsLabel]);
+
+  async function loadMoreSearch() {
+    searchAbortRef.current?.abort();
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
+    const requestId = ++searchRequestIdRef.current;
+
+    const nextPage = searchPage + 1;
+
+    setSearchLoadingMore(true);
+    setSearchError(null);
+
+    try {
+      const response = await fetch(
+        `${searchEndpoint}?query=${encodeURIComponent(trimmedQuery)}&page=${nextPage}`,
+        { signal: controller.signal }
+      );
+      const data = await response.json();
+
+      if (requestId !== searchRequestIdRef.current) return;
+
+      if (!response.ok) {
+        throw new Error(data.error ?? `Failed to search ${itemsLabel}`);
+      }
+
+      setSearchResults((prev) => [...(prev ?? []), ...data.results]);
+      setSearchPage(nextPage);
+      setSearchTotalPages(data.total_pages ?? nextPage);
+    } catch (err) {
+      if (requestId !== searchRequestIdRef.current) return;
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      setSearchError(
+        err instanceof Error ? err.message : `Failed to search ${itemsLabel}`
+      );
+    } finally {
+      if (requestId === searchRequestIdRef.current) {
+        setSearchLoadingMore(false);
+      }
+    }
+  }
 
   // Only runs when there's no query, at least one filter differs from its
   // default, and mood isn't active - otherwise the static Popular grid is
@@ -850,27 +994,44 @@ export function MediaExplorer<TSortBy extends string>({
           : mode === "discover"
             ? discoverError
             : null;
-  // Blend and mood results aren't paginated in v1 - both are one-shot
-  // queries against a fixed candidate pool, not a stable filter set to page
-  // through. Discover and Popular both page through TMDB's own paginated
-  // endpoints, so both get a real "Load more".
+  // Discover/Popular page through TMDB's own paginated endpoints; search
+  // does too (TMDB's search endpoint is natively paginated, same as
+  // Popular). Mood pages through its already-ranked server-side pool
+  // (moodHasMore, computed server-side from the pool's real depth - see
+  // mood-search.ts). Blend pages through its own already-scored candidate
+  // pool the same way (blendHasMore) - a single TMDB discover page's worth
+  // of candidates, so this typically exhausts after one Load More click.
   const canLoadMore =
     (mode === "discover" &&
       discoverPage < discoverTotalPages &&
       discoverPage < TMDB_MAX_DISCOVER_PAGE) ||
     (mode === "popular" &&
       popularPage < popularTotalPages &&
-      popularPage < TMDB_MAX_DISCOVER_PAGE);
+      popularPage < TMDB_MAX_DISCOVER_PAGE) ||
+    (mode === "search" &&
+      searchPage < searchTotalPages &&
+      searchPage < TMDB_MAX_DISCOVER_PAGE) ||
+    (mode === "mood" && moodHasMore) ||
+    (mode === "blend" && blendHasMore);
   const loadingMore =
     mode === "discover"
       ? discoverLoadingMore
       : mode === "popular"
         ? popularLoadingMore
-        : false;
+        : mode === "search"
+          ? searchLoadingMore
+          : mode === "mood"
+            ? moodLoadingMore
+            : mode === "blend"
+              ? blendLoadingMore
+              : false;
 
   function handleLoadMore() {
     if (mode === "discover") loadMoreDiscover();
     else if (mode === "popular") loadMorePopular();
+    else if (mode === "search") loadMoreSearch();
+    else if (mode === "mood") loadMoreMood();
+    else if (mode === "blend") loadMoreBlend();
   }
 
   const activeFilterCount =

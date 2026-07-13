@@ -67,7 +67,22 @@ export async function POST(request: NextRequest) {
     minRt: minRtRaw,
     watchProviderIds,
     watchRegion,
+    page: pageRaw,
   } = (body ?? {}) as Record<string, unknown>;
+
+  // Which tier of the already-ranked pool to return - Load More on the
+  // client sends page 2+ alongside cachedInterpretation, never a fresh
+  // query, so this never affects rate limiting or the LLM call below.
+  let resultsPage = 1;
+  if (pageRaw !== undefined) {
+    resultsPage = Number(pageRaw);
+    if (!Number.isInteger(resultsPage) || resultsPage < 1) {
+      return NextResponse.json(
+        { error: "Field 'page' must be a positive integer" },
+        { status: 400 }
+      );
+    }
+  }
 
   // Filter-override validation - all optional, all shared between the
   // fresh-query and cached-interpretation paths below.
@@ -207,7 +222,7 @@ export async function POST(request: NextRequest) {
       ? (merged.sortBy as MovieSortBy)
       : "popularity.desc";
 
-    const { results: ranked, appliedGenreIds } = await discoverAndRankMoodPool(
+    const { results: ranked, appliedGenreIds, hasMore } = await discoverAndRankMoodPool(
       (candidateGenreIds, candidateKeywordIds, page, genreMatchMode) =>
         discoverMovies({
           genreIds: candidateGenreIds,
@@ -225,7 +240,8 @@ export async function POST(request: NextRequest) {
       avoidGenreIds,
       genreNames,
       keywordNames,
-      "movie"
+      "movie",
+      resultsPage
     );
     const enriched = await enrichMoviesWithRatings(ranked);
     const filtered = enriched.filter((movie) => passesRatingFilters(movie.ratings, minImdb, minRt));
@@ -256,6 +272,7 @@ export async function POST(request: NextRequest) {
         yearRange,
       },
       resolvedParams,
+      hasMore,
     });
   } catch (error) {
     if (error instanceof MoodSearchError) {
