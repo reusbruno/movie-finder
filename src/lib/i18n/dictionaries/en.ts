@@ -110,6 +110,9 @@ const en = {
     rateStars: (count: number) => `Rate ${count} ${count === 1 ? "star" : "stars"}`,
     notesPlaceholder: "Notes (optional)",
     saveNotes: "Save",
+    markedWatchedToast: "Marked as watched",
+    unmarkedWatchedToast: "Unmarked as watched",
+    watchedUpdateFailedToast: "Couldn't update watched status",
   },
   titlePicker: {
     searchFailed: "Search failed",

@@ -109,6 +109,9 @@ const ptBR: Dictionary = {
     rateStars: (count: number) => `Avaliar com ${count} ${count === 1 ? "estrela" : "estrelas"}`,
     notesPlaceholder: "Notas (opcional)",
     saveNotes: "Salvar",
+    markedWatchedToast: "Marcado como assistido",
+    unmarkedWatchedToast: "Desmarcado como assistido",
+    watchedUpdateFailedToast: "Não foi possível atualizar o status de assistido",
   },
   titlePicker: {
     searchFailed: "Falha na busca",

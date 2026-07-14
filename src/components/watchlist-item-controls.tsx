@@ -1,23 +1,36 @@
 "use client";
 
 import { useState } from "react";
-import { Star } from "lucide-react";
+import { Eye, Star } from "lucide-react";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { WatchlistMediaType } from "@/lib/watchlist";
+import { showToast } from "@/lib/toast";
 import { useLanguage } from "@/components/language-provider";
 
 const RATING_VALUES = [1, 2, 3, 4, 5] as const;
 
+// Same duration as movie-card.tsx's WatchlistButton pulse - both should
+// feel identically "instant" on click.
+const PULSE_MS = 180;
+
 // RLS (see supabase/migrations/0001_watchlist.sql) already scopes every
 // query to the caller's own rows, so tmdb_id + media_type is enough to
-// target the right row without also filtering on user_id here.
+// target the right row without also filtering on user_id here. Returns
+// the write error (if any) so callers that want success/failure feedback
+// (the watched toggle, below) can react to it - callers that don't
+// (rating, notes) simply ignore the return value, unchanged from before.
 async function updateRow(
   id: number,
   mediaType: WatchlistMediaType,
   patch: { watched?: boolean; rating?: number | null; notes?: string | null }
 ) {
   const supabase = getSupabaseBrowserClient();
-  await supabase.from("watchlist").update(patch).eq("tmdb_id", id).eq("media_type", mediaType);
+  const { error } = await supabase
+    .from("watchlist")
+    .update(patch)
+    .eq("tmdb_id", id)
+    .eq("media_type", mediaType);
+  return error;
 }
 
 export function WatchlistItemControls({
@@ -41,11 +54,31 @@ export function WatchlistItemControls({
   const [notes, setNotes] = useState(initialNotes ?? "");
   const [notesDirty, setNotesDirty] = useState(false);
   const [savingNotes, setSavingNotes] = useState(false);
+  const [watchedPulsing, setWatchedPulsing] = useState(false);
 
   function handleToggleWatched() {
     const next = !watched;
+
+    // Fires immediately on click, same as movie-card.tsx's WatchlistButton
+    // pulse - the click should feel instant regardless of the write's
+    // actual latency.
+    setWatchedPulsing(true);
+    setTimeout(() => setWatchedPulsing(false), PULSE_MS);
+
     setWatched(next);
-    void updateRow(id, mediaType, { watched: next });
+    void updateRow(id, mediaType, { watched: next }).then((error) => {
+      if (error) {
+        // Roll back the optimistic toggle and surface the failure the
+        // same way the watchlist add/remove button does.
+        setWatched(!next);
+        showToast(t.watchlist.watchedUpdateFailedToast, "error");
+        return;
+      }
+      showToast(
+        next ? t.watchlist.markedWatchedToast : t.watchlist.unmarkedWatchedToast,
+        "success"
+      );
+    });
   }
 
   function handleRate(value: number) {
@@ -67,15 +100,25 @@ export function WatchlistItemControls({
     <div className="flex flex-col gap-2 rounded-lg border border-black/[.08] p-4 sm:flex-row sm:items-start sm:gap-4 dark:border-white/[.145]">
       <p className="text-sm font-medium sm:w-40 sm:shrink-0 sm:pt-1">{title}</p>
       <div className="flex flex-1 flex-col gap-2">
-        <label className="flex w-fit items-center gap-2 text-sm text-foreground/70">
-          <input
-            type="checkbox"
-            checked={watched}
-            onChange={handleToggleWatched}
-            className="h-4 w-4 accent-accent"
-          />
-          {t.watchlist.watched}
-        </label>
+        <div className="flex w-fit items-center gap-2">
+          <button
+            type="button"
+            onClick={handleToggleWatched}
+            aria-pressed={watched}
+            aria-label={t.watchlist.watched}
+            title={t.watchlist.watched}
+            className={`flex h-7 w-7 items-center justify-center rounded-full transition-all duration-150 ${
+              watched ? "text-foreground" : "text-foreground/30 hover:text-foreground/60"
+            } ${watchedPulsing ? "scale-125" : "scale-100"}`}
+          >
+            {/* Unlike Bookmark's fill toggle, Eye's shape (an outer almond
+                plus an inner pupil circle) reads as an indistinct blob when
+                solid-filled at this size - confirmed via screenshot, not
+                assumed. State is conveyed by color weight alone instead. */}
+            <Eye className="h-4 w-4" />
+          </button>
+          <span className="text-sm text-foreground/70">{t.watchlist.watched}</span>
+        </div>
 
         <div className="flex items-center gap-1" role="radiogroup" aria-label={t.watchlist.rating}>
           {RATING_VALUES.map((value) => (
