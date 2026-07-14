@@ -100,6 +100,12 @@ const en = {
   watchlist: {
     empty: "Your watchlist is empty. Add titles from any movie or show card.",
     loadError: "Failed to load your watchlist. Try refreshing.",
+    browseLink: "Browse movies",
+    watched: "Watched",
+    rating: "Your rating",
+    rateStars: (count: number) => `Rate ${count} ${count === 1 ? "star" : "stars"}`,
+    notesPlaceholder: "Notes (optional)",
+    saveNotes: "Save",
   },
   titlePicker: {
     searchFailed: "Search failed",
@@ -241,6 +247,19 @@ const en = {
   trailer: {
     playAriaLabel: (title: string) => `Play trailer for ${title}`,
     closeAriaLabel: "Close trailer",
+  },
+  auth: {
+    signIn: "Sign in",
+    signOut: "Sign out",
+    signInHeading: "Sign in",
+    signUpHeading: "Create an account",
+    emailPlaceholder: "Email",
+    passwordPlaceholder: "Password",
+    signInAction: "Sign in",
+    signUpAction: "Sign up",
+    continueWithGoogle: "Continue with Google",
+    switchToSignUp: "Don't have an account? Sign up",
+    switchToSignIn: "Already have an account? Sign in",
   },
 };
 

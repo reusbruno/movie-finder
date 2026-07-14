@@ -19,6 +19,7 @@ import { ScoreBadges } from "@/components/score-badges";
 import { CastList } from "@/components/cast-list";
 import { WatchProviders } from "@/components/watch-providers";
 import { TrailerButton } from "@/components/trailer-button";
+import { WatchlistButton } from "@/components/movie-card";
 import { isLocale, DEFAULT_LOCALE, TMDB_LANGUAGE } from "@/lib/i18n/locale";
 import { getDictionary } from "@/lib/i18n";
 
@@ -155,6 +156,7 @@ export default async function MovieDetailPage({
           {trailer && (
             <TrailerButton videoKey={trailer.key} title={details.title} locale={locale} />
           )}
+          <WatchlistButton id={movieId} mediaType="movie" title={details.title} />
         </div>
         <div className="flex flex-col gap-3">
           <h1 className="font-display text-xl tracking-wide">

@@ -3,35 +3,56 @@
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { Bookmark } from "lucide-react";
 import type { MovieWithMatch } from "@/lib/match-explanation";
 import { useWatchlist } from "@/lib/use-watchlist";
+import { useAuth } from "@/lib/use-auth";
 import type { WatchlistMediaType } from "@/lib/watchlist";
 import { ScoreBadges } from "@/components/score-badges";
 import { useLanguage } from "@/components/language-provider";
 
-function WatchlistButton({
+// Exported for reuse on the detail pages' own poster (movies/[id],
+// series/[id]) - the design requires a watchlist button there too, not
+// just on grid cards, and the add/remove/sign-in-redirect behavior is
+// identical either way.
+export function WatchlistButton({
   id,
   mediaType,
   title,
-  posterPath,
 }: {
   id: number;
   mediaType: WatchlistMediaType;
   title: string;
-  posterPath: string | null;
 }) {
   const { t } = useLanguage();
   const { has, add, remove } = useWatchlist();
+  const { user } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
   const saved = has(id, mediaType);
 
   function handleClick(event: React.MouseEvent) {
     event.preventDefault();
     event.stopPropagation();
+    // Prompt sign-in rather than failing silently - matches every other
+    // "not signed in" path in this feature (the watchlist page itself
+    // redirects the same way).
+    if (!user) {
+      router.push(`/sign-in?next=${encodeURIComponent(pathname)}`);
+      return;
+    }
     if (saved) {
-      remove(id, mediaType);
+      // The /watchlist page itself is server-rendered from the DB at
+      // request time - removing an item there needs a refresh so the now-
+      // stale server-rendered card/controls actually disappear, not just
+      // show an unfilled bookmark. Every other grid is unaffected by a
+      // refresh of its own route, so this is scoped to that one page.
+      void remove(id, mediaType).then(() => {
+        if (pathname === "/watchlist") router.refresh();
+      });
     } else {
-      add({ id, mediaType, title, posterPath });
+      void add(id, mediaType);
     }
   }
 
@@ -127,12 +148,7 @@ export function MovieCard({
       href={lang ? `/${cardBasePath}/${movie.id}?lang=${lang}` : `/${cardBasePath}/${movie.id}`}
       className="group relative block aspect-[2/3] overflow-hidden rounded-lg bg-black/[.04] shadow-none transition-all duration-200 ease-out hover:z-10 hover:scale-[1.04] hover:shadow-lg hover:shadow-black/40 focus-visible:z-10 focus-visible:scale-[1.04] focus-visible:ring-2 focus-visible:ring-accent dark:bg-white/[.06]"
     >
-      <WatchlistButton
-        id={movie.id}
-        mediaType={mediaType}
-        title={movie.title}
-        posterPath={movie.poster_path}
-      />
+      <WatchlistButton id={movie.id} mediaType={mediaType} title={movie.title} />
       {movie.poster_path ? (
         <Image
           src={`${POSTER_BASE_URL}${movie.poster_path}`}

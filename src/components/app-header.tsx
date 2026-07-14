@@ -6,6 +6,7 @@ import type { MouseEvent } from "react";
 import { ModeToggle } from "@/components/mode-toggle";
 import { HeaderSearch } from "@/components/header-search";
 import { LanguageToggle } from "@/components/language-toggle";
+import { AuthStatus } from "@/components/auth-status";
 import { useLanguage } from "@/components/language-provider";
 
 export function AppHeader() {
@@ -54,6 +55,7 @@ export function AppHeader() {
         >
           {t.header.watchlist}
         </Link>
+        <AuthStatus />
         <LanguageToggle />
         <ModeToggle />
       </div>

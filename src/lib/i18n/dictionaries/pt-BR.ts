@@ -99,6 +99,12 @@ const ptBR: Dictionary = {
   watchlist: {
     empty: "Sua lista está vazia. Adicione títulos a partir de qualquer card de filme ou série.",
     loadError: "Falha ao carregar sua lista. Tente atualizar a página.",
+    browseLink: "Explorar filmes",
+    watched: "Assistido",
+    rating: "Sua avaliação",
+    rateStars: (count: number) => `Avaliar com ${count} ${count === 1 ? "estrela" : "estrelas"}`,
+    notesPlaceholder: "Notas (opcional)",
+    saveNotes: "Salvar",
   },
   titlePicker: {
     searchFailed: "Falha na busca",
@@ -224,6 +230,19 @@ const ptBR: Dictionary = {
   trailer: {
     playAriaLabel: (title: string) => `Reproduzir trailer de ${title}`,
     closeAriaLabel: "Fechar trailer",
+  },
+  auth: {
+    signIn: "Entrar",
+    signOut: "Sair",
+    signInHeading: "Entrar",
+    signUpHeading: "Criar conta",
+    emailPlaceholder: "E-mail",
+    passwordPlaceholder: "Senha",
+    signInAction: "Entrar",
+    signUpAction: "Criar conta",
+    continueWithGoogle: "Continuar com o Google",
+    switchToSignUp: "Não tem uma conta? Criar conta",
+    switchToSignIn: "Já tem uma conta? Entrar",
   },
 };
 
