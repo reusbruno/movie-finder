@@ -4,6 +4,10 @@ import {
   MediaExplorer,
   type MediaExplorerConfig,
 } from "@/components/media-explorer";
+import { DEFAULT_LOCALE, TMDB_LANGUAGE } from "@/lib/i18n/locale";
+
+// See src/app/movies/page.tsx - same SSR-default reasoning.
+const SSR_LANGUAGE = TMDB_LANGUAGE[DEFAULT_LOCALE];
 
 const SERIES_CONFIG: MediaExplorerConfig<TVSortBy> = {
   basePath: "series",
@@ -12,6 +16,7 @@ const SERIES_CONFIG: MediaExplorerConfig<TVSortBy> = {
   moodSearchEndpoint: "/api/tv/mood-search",
   vibeBlendEndpoint: "/api/tv/vibe-blend",
   popularEndpoint: "/api/tv/popular",
+  genresEndpoint: "/api/tv/genres",
   sortOptions: [
     { value: "popularity.desc" },
     { value: "vote_average.desc" },
@@ -23,8 +28,8 @@ const SERIES_CONFIG: MediaExplorerConfig<TVSortBy> = {
 
 export default async function SeriesPage() {
   const [popular, genres] = await Promise.all([
-    getPopularTV(),
-    getTVGenres(),
+    getPopularTV(1, SSR_LANGUAGE),
+    getTVGenres(SSR_LANGUAGE),
   ]);
   const initialShows = await enrichTVWithRatings(popular.results);
 

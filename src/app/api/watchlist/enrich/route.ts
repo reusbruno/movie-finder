@@ -7,6 +7,8 @@ import {
   type TMDBTVDetails,
 } from "@/lib/tmdb";
 import { getMovieRatings, getTVRatings } from "@/lib/ratings";
+import { TMDB_LANGUAGE } from "@/lib/i18n/locale";
+import { resolveLocale } from "@/lib/i18n/request";
 
 // The watchlist itself lives in the browser's localStorage (see
 // src/lib/watchlist.ts) and only ever stores id/mediaType/title/posterPath -
@@ -58,7 +60,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Request body must be JSON" }, { status: 400 });
   }
 
-  const rawItems = (body as { items?: unknown } | null)?.items;
+  const { items: rawItems, language: languageRaw } = (body ?? {}) as {
+    items?: unknown;
+    language?: unknown;
+  };
+
+  const resolved = resolveLocale(typeof languageRaw === "string" ? languageRaw : null);
+  if (!resolved.ok) return resolved.response;
+  const { locale } = resolved;
+  const language = TMDB_LANGUAGE[locale];
+
   if (!Array.isArray(rawItems)) {
     return NextResponse.json({ error: "Field 'items' must be an array" }, { status: 400 });
   }
@@ -70,8 +81,8 @@ export async function POST(request: NextRequest) {
       try {
         const [details, ratings] =
           mediaType === "movie"
-            ? await Promise.all([getMovieDetails(id), getMovieRatings(id)])
-            : await Promise.all([getTVDetails(id), getTVRatings(id)]);
+            ? await Promise.all([getMovieDetails(id, language), getMovieRatings(id)])
+            : await Promise.all([getTVDetails(id, language), getTVRatings(id)]);
         return { ...toCardShape(details), ratings, mediaType };
       } catch {
         // A title that 404s (removed from TMDB, or a stale/bad stored id)

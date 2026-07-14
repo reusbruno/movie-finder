@@ -5,7 +5,13 @@ import { FilmographyCard } from "@/components/filmography-card";
 import { gridItemVisibilityClass } from "@/lib/grid-visibility";
 import { useLanguage } from "@/components/language-provider";
 
-export function FilmographyGrid({ credits }: { credits: TMDBCastCredit[] }) {
+export function FilmographyGrid({
+  credits,
+  lang,
+}: {
+  credits: TMDBCastCredit[];
+  lang?: string;
+}) {
   const { t } = useLanguage();
 
   if (credits.length === 0) {
@@ -23,7 +29,7 @@ export function FilmographyGrid({ credits }: { credits: TMDBCastCredit[] }) {
           key={credit.credit_id}
           className={gridItemVisibilityClass(index, credits.length)}
         >
-          <FilmographyCard credit={credit} />
+          <FilmographyCard credit={credit} lang={lang} />
         </div>
       ))}
     </div>

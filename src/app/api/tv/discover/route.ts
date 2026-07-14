@@ -8,12 +8,19 @@ import {
 } from "@/lib/tmdb";
 import { enrichTVWithRatings, passesRatingFilters } from "@/lib/ratings";
 import { isWatchRegion } from "@/lib/watch-providers";
+import { TMDB_LANGUAGE } from "@/lib/i18n/locale";
+import { getDictionary } from "@/lib/i18n";
+import { resolveLocale } from "@/lib/i18n/request";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const genresParam = searchParams.get("genres");
   const sortParam = searchParams.get("sort_by");
   const pageParam = searchParams.get("page");
+
+  const resolved = resolveLocale(searchParams.get("language"));
+  if (!resolved.ok) return resolved.response;
+  const { locale } = resolved;
 
   const genreIds = genresParam
     ? genresParam
@@ -106,6 +113,7 @@ export async function GET(request: NextRequest) {
       page,
       watchProviderIds,
       watchRegion: regionParam ?? undefined,
+      language: TMDB_LANGUAGE[locale],
     });
     const enriched = await enrichTVWithRatings(results.results);
     const filtered = enriched.filter((show) =>
@@ -117,7 +125,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
     return NextResponse.json(
-      { error: "Failed to discover TV shows" },
+      { error: getDictionary(locale).serverErrors.failedToDiscoverTV },
       { status: 500 }
     );
   }

@@ -21,6 +21,9 @@ import {
 } from "@/lib/mood-search";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import { isWatchRegion } from "@/lib/watch-providers";
+import { TMDB_LANGUAGE } from "@/lib/i18n/locale";
+import { getDictionary } from "@/lib/i18n";
+import { resolveLocale } from "@/lib/i18n/request";
 
 const MAX_QUERY_LENGTH = 300;
 // This route spends Anthropic credits per call - generous for a human
@@ -47,10 +50,6 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isMoodSearchAvailable()) {
-    return NextResponse.json({ error: "Mood search is not configured" }, { status: 503 });
-  }
-
   let body: unknown;
   try {
     body = await request.json();
@@ -68,7 +67,18 @@ export async function POST(request: NextRequest) {
     watchProviderIds,
     watchRegion,
     page: pageRaw,
+    language: languageRaw,
   } = (body ?? {}) as Record<string, unknown>;
+
+  const resolvedLocale = resolveLocale(typeof languageRaw === "string" ? languageRaw : null);
+  if (!resolvedLocale.ok) return resolvedLocale.response;
+  const { locale } = resolvedLocale;
+  const tmdbLanguage = TMDB_LANGUAGE[locale];
+  const t = getDictionary(locale);
+
+  if (!isMoodSearchAvailable()) {
+    return NextResponse.json({ error: t.serverErrors.moodSearchNotConfigured }, { status: 503 });
+  }
 
   // Which tier of the already-ranked pool to return - Load More on the
   // client sends page 2+ alongside cachedInterpretation, never a fresh
@@ -149,7 +159,7 @@ export async function POST(request: NextRequest) {
   const hasGenreOverride = Boolean(overrides.genreIds && overrides.genreIds.length > 0);
 
   try {
-    const { genres } = await getMovieGenres();
+    const { genres } = await getMovieGenres(tmdbLanguage);
 
     let genreIds: number[];
     let keywordIds: number[];
@@ -177,7 +187,7 @@ export async function POST(request: NextRequest) {
       );
       if (!allowed) {
         return NextResponse.json(
-          { error: "Too many searches — wait a moment and try again." },
+          { error: t.errors.tooManySearches },
           { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } }
         );
       }
@@ -186,7 +196,7 @@ export async function POST(request: NextRequest) {
         genreNames: genres.map((genre) => genre.name),
         sortOptions: MOVIE_SORT_OPTIONS,
       });
-      const resolved = await resolveMoodFilters(interpretation, "movie", genres);
+      const resolved = await resolveMoodFilters(interpretation, "movie", genres, tmdbLanguage);
       genreIds = resolved.genreIds;
       keywordIds = resolved.keywordIds;
       avoidGenreIds = resolved.avoidGenreIds;
@@ -234,6 +244,7 @@ export async function POST(request: NextRequest) {
           watchRegion: overrides.watchRegion,
           page,
           voteCountGte: POOL_MIN_VOTE_COUNT,
+          language: tmdbLanguage,
         }),
       merged.genreAttempts,
       keywordIds,
@@ -282,7 +293,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
     return NextResponse.json(
-      { error: "Failed to interpret mood query" },
+      { error: t.errors.failedToInterpretMood },
       { status: 500 }
     );
   }

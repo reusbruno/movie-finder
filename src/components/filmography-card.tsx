@@ -9,14 +9,21 @@ const POSTER_BASE_URL = "https://image.tmdb.org/t/p/w500";
 const POSTER_SIZES =
   "(min-width: 1280px) 12vw, (min-width: 768px) 16vw, (min-width: 640px) 25vw, 33vw";
 
-export function FilmographyCard({ credit }: { credit: TMDBCastCredit }) {
+export function FilmographyCard({
+  credit,
+  lang,
+}: {
+  credit: TMDBCastCredit;
+  lang?: string;
+}) {
   const { t } = useLanguage();
   const year = credit.release_date ? credit.release_date.slice(0, 4) : null;
   const isTV = credit.media_type === "tv";
+  const basePath = isTV ? "series" : "movies";
 
   return (
     <Link
-      href={`/${isTV ? "series" : "movies"}/${credit.id}`}
+      href={lang ? `/${basePath}/${credit.id}?lang=${lang}` : `/${basePath}/${credit.id}`}
       className="group relative block aspect-[2/3] overflow-hidden rounded-lg bg-black/[.04] transition-all duration-200 ease-out hover:z-10 hover:scale-[1.04] hover:shadow-lg hover:shadow-black/40 focus-visible:z-10 focus-visible:scale-[1.04] focus-visible:ring-2 focus-visible:ring-accent dark:bg-white/[.06]"
     >
       {credit.poster_path ? (

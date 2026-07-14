@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTVRecommendations, TMDBError } from "@/lib/tmdb";
 import { enrichTVWithRatings } from "@/lib/ratings";
+import { TMDB_LANGUAGE } from "@/lib/i18n/locale";
+import { getDictionary } from "@/lib/i18n";
+import { resolveLocale } from "@/lib/i18n/request";
 
 export async function GET(
   request: NextRequest,
@@ -9,8 +12,15 @@ export async function GET(
   const { id } = await params;
   const tvId = Number(id);
 
+  const resolved = resolveLocale(request.nextUrl.searchParams.get("language"));
+  if (!resolved.ok) return resolved.response;
+  const { locale } = resolved;
+
   if (!Number.isInteger(tvId) || tvId < 1) {
-    return NextResponse.json({ error: "Invalid TV show id" }, { status: 400 });
+    return NextResponse.json(
+      { error: getDictionary(locale).serverErrors.invalidTVId },
+      { status: 400 }
+    );
   }
 
   const pageParam = request.nextUrl.searchParams.get("page");
@@ -24,7 +34,7 @@ export async function GET(
   }
 
   try {
-    const results = await getTVRecommendations(tvId, page);
+    const results = await getTVRecommendations(tvId, page, TMDB_LANGUAGE[locale]);
     const enriched = await enrichTVWithRatings(results.results);
     return NextResponse.json({ ...results, results: enriched });
   } catch (error) {
@@ -32,7 +42,7 @@ export async function GET(
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
     return NextResponse.json(
-      { error: "Failed to fetch TV show recommendations" },
+      { error: getDictionary(locale).serverErrors.failedToFetchTVRecommendations },
       { status: 500 }
     );
   }

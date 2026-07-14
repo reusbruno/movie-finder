@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { TMDBError } from "@/lib/tmdb";
 import { blendTitles, VibeBlendError } from "@/lib/vibe-blend";
 import { enrichTVWithRatings } from "@/lib/ratings";
+import { TMDB_LANGUAGE } from "@/lib/i18n/locale";
+import { getDictionary } from "@/lib/i18n";
+import { resolveLocale } from "@/lib/i18n/request";
 
 // See src/app/api/movies/vibe-blend/route.ts - same rationale.
 const MAX_ENRICHED_BLEND_RESULTS = 10;
@@ -11,6 +14,10 @@ export async function GET(request: NextRequest) {
   const idA = Number(searchParams.get("a"));
   const idB = Number(searchParams.get("b"));
   const pageParam = searchParams.get("page");
+
+  const resolved = resolveLocale(searchParams.get("language"));
+  if (!resolved.ok) return resolved.response;
+  const { locale } = resolved;
 
   if (!Number.isInteger(idA) || idA <= 0 || !Number.isInteger(idB) || idB <= 0) {
     return NextResponse.json(
@@ -32,7 +39,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const blend = await blendTitles(idA, idB, "tv");
+    const blend = await blendTitles(idA, idB, "tv", TMDB_LANGUAGE[locale]);
     const start = (page - 1) * MAX_ENRICHED_BLEND_RESULTS;
     const topResults = blend.results.slice(start, start + MAX_ENRICHED_BLEND_RESULTS);
     const enriched = await enrichTVWithRatings(topResults);
@@ -49,6 +56,9 @@ export async function GET(request: NextRequest) {
     if (error instanceof TMDBError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
-    return NextResponse.json({ error: "Failed to blend TV shows" }, { status: 500 });
+    return NextResponse.json(
+      { error: getDictionary(locale).serverErrors.failedToBlendTV },
+      { status: 500 }
+    );
   }
 }

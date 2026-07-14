@@ -61,6 +61,7 @@ export function MovieCard({
   basePath = "movies",
   eager = false,
   canExplainMore = false,
+  lang,
 }: {
   // mediaType is optional and only needed when a single grid mixes movies
   // and TV (the watchlist page) - when present it overrides `basePath` for
@@ -73,6 +74,13 @@ export function MovieCard({
   // set) - gates the "Explain more" button independent of whether this
   // particular card has a matchExplanation to expand.
   canExplainMore?: boolean;
+  // Appended to the card's detail-page link as ?lang= - only set by a
+  // server-rendered detail page's "More like this" grid (see
+  // movies/[id]/page.tsx), which has no other way to pass its resolved
+  // locale to the next server-rendered page a click lands on. Every other
+  // caller (the client-driven browse/search/mood/watchlist grids) omits it
+  // entirely - those pages don't need it, they read locale from Context.
+  lang?: string;
 }) {
   const { t } = useLanguage();
   const year = movie.release_date ? movie.release_date.slice(0, 4) : null;
@@ -116,7 +124,7 @@ export function MovieCard({
 
   return (
     <Link
-      href={`/${cardBasePath}/${movie.id}`}
+      href={lang ? `/${cardBasePath}/${movie.id}?lang=${lang}` : `/${cardBasePath}/${movie.id}`}
       className="group relative block aspect-[2/3] overflow-hidden rounded-lg bg-black/[.04] shadow-none transition-all duration-200 ease-out hover:z-10 hover:scale-[1.04] hover:shadow-lg hover:shadow-black/40 focus-visible:z-10 focus-visible:scale-[1.04] focus-visible:ring-2 focus-visible:ring-accent dark:bg-white/[.06]"
     >
       <WatchlistButton

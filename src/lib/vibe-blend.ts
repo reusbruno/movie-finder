@@ -47,13 +47,13 @@ interface SeedData {
   recommendationIds: Set<number>;
 }
 
-async function fetchSeed(id: number, mediaType: MediaType): Promise<SeedData> {
+async function fetchSeed(id: number, mediaType: MediaType, language: string): Promise<SeedData> {
   const getKeywords = mediaType === "movie" ? getMovieKeywordList : getTVKeywordList;
 
   const [details, keywords, recommendations] =
     mediaType === "movie"
-      ? await Promise.all([getMovieDetails(id), getKeywords(id), getMovieRecommendations(id)])
-      : await Promise.all([getTVDetails(id), getKeywords(id), getTVRecommendations(id)]);
+      ? await Promise.all([getMovieDetails(id, language), getKeywords(id), getMovieRecommendations(id, 1, language)])
+      : await Promise.all([getTVDetails(id, language), getKeywords(id), getTVRecommendations(id, 1, language)]);
 
   return {
     id: details.id,
@@ -83,15 +83,16 @@ async function fetchCandidateKeywordIds(
 export async function blendTitles(
   idA: number,
   idB: number,
-  mediaType: MediaType
+  mediaType: MediaType,
+  language = "en-US"
 ): Promise<BlendResult> {
   if (idA === idB) {
     throw new VibeBlendError("Pick two different titles to blend", 400);
   }
 
   const [seedA, seedB] = await Promise.all([
-    fetchSeed(idA, mediaType),
-    fetchSeed(idB, mediaType),
+    fetchSeed(idA, mediaType, language),
+    fetchSeed(idB, mediaType, language),
   ]);
 
   const genreIds = [...new Set([...seedA.genreNames.keys(), ...seedB.genreNames.keys()])];
@@ -101,8 +102,8 @@ export async function blendTitles(
 
   const discover =
     mediaType === "movie"
-      ? await discoverMovies({ genreIds, keywordIds, sortBy: "popularity.desc", page: 1 })
-      : await discoverTV({ genreIds, keywordIds, sortBy: "popularity.desc", page: 1 });
+      ? await discoverMovies({ genreIds, keywordIds, sortBy: "popularity.desc", page: 1, language })
+      : await discoverTV({ genreIds, keywordIds, sortBy: "popularity.desc", page: 1, language });
 
   const candidates = discover.results.filter(
     (item) => item.id !== idA && item.id !== idB

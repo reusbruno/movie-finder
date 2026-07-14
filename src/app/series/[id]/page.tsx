@@ -16,6 +16,8 @@ import { MovieGrid } from "@/components/movie-grid";
 import { ScoreBadges } from "@/components/score-badges";
 import { CastList } from "@/components/cast-list";
 import { WatchProviders } from "@/components/watch-providers";
+import { isLocale, DEFAULT_LOCALE, TMDB_LANGUAGE } from "@/lib/i18n/locale";
+import { getDictionary } from "@/lib/i18n";
 
 const MAX_CAST_MEMBERS = 12;
 // See src/app/movies/[id]/page.tsx - same rationale: caps OMDb/MDBList/TMDB
@@ -26,23 +28,31 @@ const POSTER_BASE_URL = "https://image.tmdb.org/t/p/w500";
 
 export default async function SeriesDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  // See src/app/movies/[id]/page.tsx - same searchParams.lang reasoning.
+  searchParams: Promise<{ lang?: string }>;
 }) {
   const { id } = await params;
   const tvId = Number(id);
+  const { lang } = await searchParams;
 
   if (!Number.isInteger(tvId) || tvId < 1) {
     notFound();
   }
 
+  const locale = lang && isLocale(lang) ? lang : DEFAULT_LOCALE;
+  const language = TMDB_LANGUAGE[locale];
+  const t = getDictionary(locale);
+
   // Started immediately, alongside getTVDetails below - none of these
   // depend on the details response. ownKeywordsPromise feeds "why this
   // match" on the recommendations below and shares the same cache
   // blend/mood search use.
-  const recommendationsPromise = getTVRecommendations(tvId);
+  const recommendationsPromise = getTVRecommendations(tvId, 1, language);
   const ratingsPromise = getTVRatings(tvId);
-  const creditsPromise = getTVCredits(tvId);
+  const creditsPromise = getTVCredits(tvId, language);
   const ownKeywordsPromise = getTVKeywordList(tvId);
   // See src/app/movies/[id]/page.tsx - server always fetches the default
   // region; the client component re-fetches if the visitor's persisted
@@ -59,7 +69,7 @@ export default async function SeriesDetailPage({
 
   let details;
   try {
-    details = await getTVDetails(tvId);
+    details = await getTVDetails(tvId, language);
   } catch (error) {
     if (error instanceof TMDBError && error.status === 404) {
       notFound();
@@ -97,14 +107,14 @@ export default async function SeriesDetailPage({
         href="/series"
         className="w-fit text-sm text-foreground/60 hover:text-foreground"
       >
-        ← Back to Series
+        {t.detail.backToSeries}
       </Link>
       <div className="flex flex-col gap-6 sm:flex-row">
         <div className="relative aspect-[2/3] w-full max-w-[220px] shrink-0 overflow-hidden rounded-lg bg-black/[.04] dark:bg-white/[.06]">
           {details.poster_path ? (
             <Image
               src={`${POSTER_BASE_URL}${details.poster_path}`}
-              alt={`${details.title} poster`}
+              alt={t.watchlistButton.posterAlt(details.title)}
               fill
               sizes="(min-width: 640px) 220px, 100vw"
               preload
@@ -112,7 +122,7 @@ export default async function SeriesDetailPage({
             />
           ) : (
             <div className="flex h-full items-center justify-center p-4 text-center text-sm text-foreground/60">
-              No poster available
+              {t.common.noPosterAvailable}
             </div>
           )}
         </div>
@@ -134,8 +144,8 @@ export default async function SeriesDetailPage({
               imdbRating={ratings.imdbRating}
               rtScore={ratings.rottenTomatoesScore}
             />
-            {` · ${details.number_of_seasons} season${details.number_of_seasons === 1 ? "" : "s"}`}
-            {` · ${details.number_of_episodes} episodes`}
+            {` · ${t.detail.seasons(details.number_of_seasons)}`}
+            {` · ${t.detail.episodes(details.number_of_episodes)}`}
             {details.genres.length > 0
               ? ` · ${details.genres.map((genre) => genre.name).join(", ")}`
               : ""}
@@ -155,19 +165,20 @@ export default async function SeriesDetailPage({
 
       {topCast.length > 0 && (
         <div className="flex flex-col gap-4">
-          <h2 className="font-display text-lg tracking-wide">Cast</h2>
-          <CastList cast={topCast} />
+          <h2 className="font-display text-lg tracking-wide">{t.detail.cast}</h2>
+          <CastList cast={topCast} lang={locale} />
         </div>
       )}
 
       <div className="flex flex-col gap-4">
         <h2 className="font-display text-lg tracking-wide">
-          More like this
+          {t.detail.moreLikeThis}
         </h2>
         <MovieGrid
           movies={recommendationsWithRatings}
           basePath="series"
           canExplainMore={isAnthropicAvailable()}
+          lang={locale}
         />
       </div>
     </div>

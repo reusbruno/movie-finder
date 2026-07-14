@@ -11,6 +11,8 @@ import {
   type TMDBGenre,
 } from "@/lib/tmdb";
 import { ActorFilmography } from "@/components/actor-filmography";
+import { isLocale, DEFAULT_LOCALE, TMDB_LANGUAGE } from "@/lib/i18n/locale";
+import { getDictionary } from "@/lib/i18n";
 
 const PROFILE_BASE_URL = "https://image.tmdb.org/t/p/w342";
 
@@ -24,22 +26,30 @@ function mergeGenres(a: TMDBGenre[], b: TMDBGenre[]): TMDBGenre[] {
 
 export default async function ActorDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  // See src/app/movies/[id]/page.tsx - same searchParams.lang reasoning.
+  searchParams: Promise<{ lang?: string }>;
 }) {
   const { id } = await params;
   const personId = Number(id);
+  const { lang } = await searchParams;
 
   if (!Number.isInteger(personId) || personId < 1) {
     notFound();
   }
 
+  const locale = lang && isLocale(lang) ? lang : DEFAULT_LOCALE;
+  const language = TMDB_LANGUAGE[locale];
+  const t = getDictionary(locale);
+
   // Started immediately, alongside getPersonDetails below - none of these
   // four depend on the details response.
-  const movieCreditsPromise = getPersonMovieCredits(personId);
-  const tvCreditsPromise = getPersonTVCredits(personId);
-  const movieGenresPromise = getMovieGenres();
-  const tvGenresPromise = getTVGenres();
+  const movieCreditsPromise = getPersonMovieCredits(personId, language);
+  const tvCreditsPromise = getPersonTVCredits(personId, language);
+  const movieGenresPromise = getMovieGenres(language);
+  const tvGenresPromise = getTVGenres(language);
   // See src/app/movies/[id]/page.tsx - pre-empt a false "unhandled
   // rejection" if any of these settle before getPersonDetails below; the
   // real error is still observed via Promise.all.
@@ -50,7 +60,7 @@ export default async function ActorDetailPage({
 
   let details;
   try {
-    details = await getPersonDetails(personId);
+    details = await getPersonDetails(personId, language);
   } catch (error) {
     if (error instanceof TMDBError && error.status === 404) {
       notFound();
@@ -74,7 +84,7 @@ export default async function ActorDetailPage({
         href="/movies"
         className="w-fit text-sm text-foreground/60 hover:text-foreground"
       >
-        ← Back to Movies
+        {t.detail.backToMovies}
       </Link>
       <div className="flex flex-col gap-6 sm:flex-row">
         <div className="relative aspect-[2/3] w-full max-w-[220px] shrink-0 overflow-hidden rounded-lg bg-black/[.04] dark:bg-white/[.06]">
@@ -89,7 +99,7 @@ export default async function ActorDetailPage({
             />
           ) : (
             <div className="flex h-full items-center justify-center p-4 text-center text-sm text-foreground/60">
-              No photo available
+              {t.cast.noPhoto}
             </div>
           )}
         </div>
@@ -98,14 +108,14 @@ export default async function ActorDetailPage({
             {details.name}
           </h1>
           <p className="max-w-2xl text-sm leading-relaxed">
-            {details.biography || "No biography available."}
+            {details.biography || t.actor.noBiography}
           </p>
         </div>
       </div>
 
       <div className="flex flex-col gap-4">
-        <h2 className="font-display text-lg tracking-wide">Filmography</h2>
-        <ActorFilmography credits={combinedCredits} genres={combinedGenres} />
+        <h2 className="font-display text-lg tracking-wide">{t.actor.filmography}</h2>
+        <ActorFilmography credits={combinedCredits} genres={combinedGenres} lang={locale} />
       </div>
     </div>
   );

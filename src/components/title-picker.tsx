@@ -28,7 +28,7 @@ export function TitlePicker({
   onSelect: (title: PickedTitle) => void;
   onClear: () => void;
 }) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<TMDBMovie[]>([]);
   const [loading, setLoading] = useState(false);
@@ -58,7 +58,7 @@ export function TitlePicker({
 
       try {
         const response = await fetch(
-          `${searchEndpoint}?query=${encodeURIComponent(trimmedQuery)}`,
+          `${searchEndpoint}?query=${encodeURIComponent(trimmedQuery)}&language=${locale}`,
           { signal: controller.signal }
         );
         const data = await response.json();
@@ -80,7 +80,7 @@ export function TitlePicker({
 
     return () => clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trimmedQuery, searchEndpoint]);
+  }, [trimmedQuery, searchEndpoint, locale]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {

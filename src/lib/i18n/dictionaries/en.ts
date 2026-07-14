@@ -158,8 +158,53 @@ const en = {
     failedToPickSurprise: "Failed to pick a surprise title",
     failedToBlend: "Failed to blend titles",
   },
+  // Server-side route catch-all fallbacks - reused as both client fallback
+  // text (data.error ?? ...) and the actual `error` field the route itself
+  // returns, via getDictionary(locale) server-side. Scoped to genuine
+  // upstream/failure messages only, not request-validation 400s (a
+  // malformed request from this app's own client should never happen, so
+  // those stay English - a developer-facing signal, not a user-facing one).
+  serverErrors: {
+    invalidMovieId: "Invalid movie id",
+    invalidTVId: "Invalid TV show id",
+    invalidPersonId: "Invalid person id",
+    failedToFetchMovieDetails: "Failed to fetch movie details",
+    failedToFetchTVDetails: "Failed to fetch TV show details",
+    failedToFetchMovieCredits: "Failed to fetch movie credits",
+    failedToFetchTVCredits: "Failed to fetch TV show credits",
+    failedToFetchPersonCredits: "Failed to fetch person credits",
+    failedToFetchMovieRecommendations: "Failed to fetch movie recommendations",
+    failedToFetchTVRecommendations: "Failed to fetch TV show recommendations",
+    failedToFetchGenres: "Failed to fetch genres",
+    failedToFetchTVGenres: "Failed to fetch TV genres",
+    failedToFetchPopularMovies: "Failed to fetch popular movies",
+    failedToFetchPopularTV: "Failed to fetch popular TV shows",
+    failedToFetchPopularPeople: "Failed to fetch popular people",
+    failedToDiscoverMovies: "Failed to discover movies",
+    failedToDiscoverTV: "Failed to discover TV shows",
+    failedToSearchMovies: "Failed to search movies",
+    failedToSearchTV: "Failed to search TV shows",
+    failedToSearchPeople: "Failed to search people",
+    failedToBlendMovies: "Failed to blend movies",
+    failedToBlendTV: "Failed to blend TV shows",
+    unsupportedLanguage: "Query parameter 'language' is not supported",
+    moodSearchNotConfigured: "Mood search is not configured",
+  },
   yearRange: {
     through: (year: number) => `through ${year}`,
+  },
+  detail: {
+    backToMovies: "← Back to Movies",
+    backToSeries: "← Back to Series",
+    cast: "Cast",
+    moreLikeThis: "More like this",
+    runtimeMinutes: (minutes: number) => `${minutes} min`,
+    seasons: (count: number) => `${count} ${count === 1 ? "season" : "seasons"}`,
+    episodes: (count: number) => `${count} ${count === 1 ? "episode" : "episodes"}`,
+  },
+  actor: {
+    noBiography: "No biography available.",
+    filmography: "Filmography",
   },
 };
 

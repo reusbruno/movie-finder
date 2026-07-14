@@ -19,6 +19,7 @@ export function MovieGrid({
   eagerFirstRow = false,
   canExplainMore = false,
   trimTrailingRow = false,
+  lang,
 }: {
   // Per-item mediaType is optional - only the watchlist grid mixes movies
   // and TV in one grid and needs it; see movie-card.tsx.
@@ -40,6 +41,9 @@ export function MovieGrid({
   // fetched and have no other path to becoming visible, so hiding them
   // would silently discard real results rather than just tidy a row.
   trimTrailingRow?: boolean;
+  // See movie-card.tsx - only set by a server-rendered detail page's
+  // recommendation grid.
+  lang?: string;
 }) {
   const { t } = useLanguage();
 
@@ -63,6 +67,7 @@ export function MovieGrid({
             basePath={basePath}
             eager={eagerFirstRow && index < MAX_COLUMNS}
             canExplainMore={canExplainMore}
+            lang={lang}
           />
         </div>
       ))}

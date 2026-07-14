@@ -1,19 +1,29 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getMovieCredits, TMDBError } from "@/lib/tmdb";
+import { TMDB_LANGUAGE } from "@/lib/i18n/locale";
+import { getDictionary } from "@/lib/i18n";
+import { resolveLocale } from "@/lib/i18n/request";
 
 export async function GET(
-  _request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
   const movieId = Number(id);
 
+  const resolved = resolveLocale(request.nextUrl.searchParams.get("language"));
+  if (!resolved.ok) return resolved.response;
+  const { locale } = resolved;
+
   if (!Number.isInteger(movieId) || movieId < 1) {
-    return NextResponse.json({ error: "Invalid movie id" }, { status: 400 });
+    return NextResponse.json(
+      { error: getDictionary(locale).serverErrors.invalidMovieId },
+      { status: 400 }
+    );
   }
 
   try {
-    const credits = await getMovieCredits(movieId);
+    const credits = await getMovieCredits(movieId, TMDB_LANGUAGE[locale]);
     // Cast only - crew (director, writers, etc.) isn't part of this feature.
     return NextResponse.json({ id: credits.id, cast: credits.cast });
   } catch (error) {
@@ -21,7 +31,7 @@ export async function GET(
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
     return NextResponse.json(
-      { error: "Failed to fetch movie credits" },
+      { error: getDictionary(locale).serverErrors.failedToFetchMovieCredits },
       { status: 500 }
     );
   }

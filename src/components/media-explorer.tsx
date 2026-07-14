@@ -16,6 +16,7 @@ import { InterpretationChips } from "@/components/interpretation-chips";
 import { useWatchRegion } from "@/lib/use-watch-region";
 import { useLanguage } from "@/components/language-provider";
 import type { Dictionary } from "@/lib/i18n";
+import { DEFAULT_LOCALE } from "@/lib/i18n/locale";
 
 const SEARCH_DEBOUNCE_MS = 400;
 const MIN_IMDB_OPTIONS = ["", "6", "7", "8", "9"] as const;
@@ -64,6 +65,11 @@ export interface MediaExplorerConfig<TSortBy extends string> {
   // pages the same way Discover mode does, rather than being capped at
   // whatever the server rendered for page 1.
   popularEndpoint: string;
+  // Used only by the SSR-seed language-correction effect below - Popular
+  // items and genres are the two props seeded server-side (always in the
+  // app-wide pt-BR default, since the server can't read localStorage), so
+  // they're the only two that need a client-side re-fetch path at all.
+  genresEndpoint: string;
   // Just the values - display labels come from the dictionary's
   // t.sortLabels, keyed by this same value, since this config is built in
   // a Server Component (movies-view.tsx/series/page.tsx) that can't call
@@ -78,7 +84,7 @@ export interface MediaExplorerConfig<TSortBy extends string> {
 export function MediaExplorer<TSortBy extends string>({
   initialItems,
   initialTotalPages,
-  genres,
+  genres: initialGenres,
   config,
 }: {
   initialItems: MovieWithRatings[];
@@ -96,11 +102,17 @@ export function MediaExplorer<TSortBy extends string>({
     moodSearchEndpoint,
     vibeBlendEndpoint,
     popularEndpoint,
+    genresEndpoint,
     sortOptions,
     defaultSort,
   } = config;
 
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  // Server-seeded (always in the app-wide pt-BR default - see
+  // movies/page.tsx/series/page.tsx), corrected client-side below if the
+  // resolved locale differs. State, not just the initial prop, since a
+  // correction needs somewhere to write the re-fetched result.
+  const [genres, setGenres] = useState<TMDBGenre[]>(initialGenres);
   // Per-basePath dictionary section (t.movies/t.series) - both share the
   // same {searchPlaceholder, searchAriaLabel, popularHeading, errors} shape,
   // so every read below goes through this one indirection instead of a
@@ -318,6 +330,11 @@ export function MediaExplorer<TSortBy extends string>({
       minRt,
       providers: [...activeWatchProviderIds].sort((a, b) => a - b),
       region,
+      // A locale-only change is still "a genuine change" for this guard's
+      // purposes - without it here, toggling language while mood is active
+      // would produce the same key as before and the composition effect
+      // below would wrongly treat it as a no-op.
+      locale,
     });
   }
 
@@ -371,6 +388,7 @@ export function MediaExplorer<TSortBy extends string>({
       const params = new URLSearchParams({
         a: String(blendTitleA.id),
         b: String(blendTitleB.id),
+        language: locale,
       });
       const response = await fetch(`${vibeBlendEndpoint}?${params.toString()}`, {
         signal: controller.signal,
@@ -420,6 +438,7 @@ export function MediaExplorer<TSortBy extends string>({
         a: String(blendTitleA.id),
         b: String(blendTitleB.id),
         page: String(nextPage),
+        language: locale,
       });
       const response = await fetch(`${vibeBlendEndpoint}?${params.toString()}`, {
         signal: controller.signal,
@@ -502,6 +521,40 @@ export function MediaExplorer<TSortBy extends string>({
     };
   }, [moodSearchEndpoint]);
 
+  // Popular items and genres are both seeded server-side, always in the
+  // app-wide pt-BR default (movies/page.tsx/series/page.tsx has no access
+  // to the client's persisted locale - no cookies/middleware in this app).
+  // If the resolved client locale differs - a returning EN-persisted
+  // visitor, or a language toggle mid-session - re-fetch page 1 of Popular
+  // and the genre list in the correct language and replace what was
+  // seeded/previously fetched. A no-op for a genuinely new pt-BR visitor,
+  // whose locale already matches, so zero extra fetch and zero flash for
+  // the stated majority case.
+  useEffect(() => {
+    if (locale === DEFAULT_LOCALE) return;
+
+    let cancelled = false;
+    Promise.all([
+      fetch(`${popularEndpoint}?page=1&language=${locale}`).then((r) => r.json()),
+      fetch(`${genresEndpoint}?language=${locale}`).then((r) => r.json()),
+    ])
+      .then(([popularData, genresData]) => {
+        if (cancelled) return;
+        setPopularItems(popularData.results ?? []);
+        setPopularPage(1);
+        setPopularTotalPages(popularData.total_pages ?? 1);
+        setGenres(genresData.genres ?? []);
+      })
+      .catch(() => {
+        // Best-effort - a failed correction just leaves Popular/genres in
+        // the SSR default language until the next locale change or reload,
+        // same tolerance as every other best-effort fetch in this app.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [locale, popularEndpoint, genresEndpoint]);
+
   // Shared by a fresh query submission and a filter change while mood is
   // already active - the latter passes cachedInterpretation instead of
   // query, which skips the LLM call (and its rate limit) entirely on the
@@ -548,7 +601,7 @@ export function MediaExplorer<TSortBy extends string>({
       const response = await fetch(moodSearchEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...payloadBase, ...moodFilterOverrides(), page }),
+        body: JSON.stringify({ ...payloadBase, ...moodFilterOverrides(), page, language: locale }),
         signal: controller.signal,
       });
       const data = await response.json();
@@ -625,7 +678,11 @@ export function MediaExplorer<TSortBy extends string>({
   }
 
   function buildDiscoverParams(targetPage: number) {
-    const params = new URLSearchParams({ sort_by: sortBy, page: String(targetPage) });
+    const params = new URLSearchParams({
+      sort_by: sortBy,
+      page: String(targetPage),
+      language: locale,
+    });
     if (selectedGenres.length > 0) {
       params.set("genres", selectedGenres.join(","));
     }
@@ -700,7 +757,7 @@ export function MediaExplorer<TSortBy extends string>({
 
       try {
         const response = await fetch(
-          `${searchEndpoint}?query=${encodeURIComponent(trimmedQuery)}`,
+          `${searchEndpoint}?query=${encodeURIComponent(trimmedQuery)}&language=${locale}`,
           { signal: controller.signal }
         );
         const data = await response.json();
@@ -729,7 +786,7 @@ export function MediaExplorer<TSortBy extends string>({
 
     return () => clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trimmedQuery, searchEndpoint]);
+  }, [trimmedQuery, searchEndpoint, locale]);
 
   async function loadMoreSearch() {
     searchAbortRef.current?.abort();
@@ -744,7 +801,7 @@ export function MediaExplorer<TSortBy extends string>({
 
     try {
       const response = await fetch(
-        `${searchEndpoint}?query=${encodeURIComponent(trimmedQuery)}&page=${nextPage}`,
+        `${searchEndpoint}?query=${encodeURIComponent(trimmedQuery)}&page=${nextPage}&language=${locale}`,
         { signal: controller.signal }
       );
       const data = await response.json();
@@ -837,6 +894,7 @@ export function MediaExplorer<TSortBy extends string>({
     region,
     moodQuery,
     discoverEndpoint,
+    locale,
   ]);
 
   // Re-runs discovery against the mood interpretation already on hand
@@ -861,7 +919,7 @@ export function MediaExplorer<TSortBy extends string>({
     if (currentFilterKey() === moodFetchKeyRef.current) return;
     runMoodDiscovery({ cachedInterpretation: moodResolvedParams });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedGenres, sortBy, minImdb, minRt, activeWatchProviderIds, region, moodQuery, moodResolvedParams]);
+  }, [selectedGenres, sortBy, minImdb, minRt, activeWatchProviderIds, region, moodQuery, moodResolvedParams, locale]);
 
   async function loadMoreDiscover() {
     discoverAbortRef.current?.abort();
@@ -917,7 +975,7 @@ export function MediaExplorer<TSortBy extends string>({
     setPopularError(null);
 
     try {
-      const response = await fetch(`${popularEndpoint}?page=${nextPage}`, {
+      const response = await fetch(`${popularEndpoint}?page=${nextPage}&language=${locale}`, {
         signal: controller.signal,
       });
       const data = await response.json();

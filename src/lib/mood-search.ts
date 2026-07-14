@@ -238,7 +238,8 @@ export interface ResolvedMoodFilters {
 export async function resolveMoodFilters(
   interpretation: MoodInterpretation,
   mediaType: "movie" | "tv",
-  genres: TMDBGenre[]
+  genres: TMDBGenre[],
+  language = "en-US"
 ): Promise<ResolvedMoodFilters> {
   const genreNameToId = new Map(genres.map((genre) => [genre.name, genre.id]));
   const genreIds = interpretation.genres
@@ -277,7 +278,9 @@ export async function resolveMoodFilters(
     interpretation.referenceTitles.slice(0, MAX_REFERENCE_TITLES).map(async (title) => {
       try {
         const { results } =
-          mediaType === "movie" ? await searchMovies(title) : await searchTV(title);
+          mediaType === "movie"
+            ? await searchMovies(title, 1, language)
+            : await searchTV(title, 1, language);
         const match = results[0];
         if (!match) return;
         const rawKeywords =

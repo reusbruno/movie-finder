@@ -9,9 +9,11 @@ import { useLanguage } from "@/components/language-provider";
 export function ActorFilmography({
   credits,
   genres,
+  lang,
 }: {
   credits: TMDBCastCredit[];
   genres: TMDBGenre[];
+  lang?: string;
 }) {
   const { t } = useLanguage();
   const [selectedGenres, setSelectedGenres] = useState<number[]>([]);
@@ -82,7 +84,7 @@ export function ActorFilmography({
           </label>
         </div>
       </div>
-      <FilmographyGrid credits={filtered} />
+      <FilmographyGrid credits={filtered} lang={lang} />
     </div>
   );
 }

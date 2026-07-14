@@ -23,7 +23,7 @@ const MAX_PEOPLE_RESULTS = 4;
 export function HeaderSearch() {
   const pathname = usePathname();
   const router = useRouter();
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const basePath = pathname?.startsWith("/series") ? "series" : "movies";
   const searchEndpoint = basePath === "series" ? "/api/tv/search" : "/api/movies/search";
 
@@ -47,12 +47,12 @@ export function HeaderSearch() {
   }
 
   function goToTitle(id: number) {
-    router.push(`/${basePath}/${id}`);
+    router.push(`/${basePath}/${id}?lang=${locale}`);
     reset();
   }
 
   function goToPerson(id: number) {
-    router.push(`/actors/${id}`);
+    router.push(`/actors/${id}?lang=${locale}`);
     reset();
   }
 
@@ -82,10 +82,10 @@ export function HeaderSearch() {
       // best-effort addition here; a failure there shouldn't blank out
       // title results that already succeeded, or vice versa.
       const [titleSettled, peopleSettled] = await Promise.allSettled([
-        fetch(`${searchEndpoint}?query=${encodeURIComponent(trimmedQuery)}`, {
+        fetch(`${searchEndpoint}?query=${encodeURIComponent(trimmedQuery)}&language=${locale}`, {
           signal: controller.signal,
         }).then((response) => response.json()),
-        fetch(`/api/people/search?query=${encodeURIComponent(trimmedQuery)}`, {
+        fetch(`/api/people/search?query=${encodeURIComponent(trimmedQuery)}&language=${locale}`, {
           signal: controller.signal,
         }).then((response) => response.json()),
       ]);
@@ -106,7 +106,7 @@ export function HeaderSearch() {
     }, DEBOUNCE_MS);
 
     return () => clearTimeout(timeout);
-  }, [trimmedQuery, searchEndpoint]);
+  }, [trimmedQuery, searchEndpoint, locale]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {

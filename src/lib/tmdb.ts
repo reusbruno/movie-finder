@@ -101,31 +101,35 @@ async function tmdbFetch<T>(
 
 export function searchMovies(
   query: string,
-  page = 1
+  page = 1,
+  language = "en-US"
 ): Promise<TMDBSearchResponse> {
   return tmdbFetch<TMDBSearchResponse>(
     "/search/movie",
-    { query, page: String(page), include_adult: "false" },
+    { query, page: String(page), include_adult: "false", language },
     REVALIDATE.search
   );
 }
 
-export function getMovieDetails(id: number): Promise<TMDBMovieDetails> {
-  return tmdbFetch<TMDBMovieDetails>(`/movie/${id}`);
+export function getMovieDetails(id: number, language = "en-US"): Promise<TMDBMovieDetails> {
+  return tmdbFetch<TMDBMovieDetails>(`/movie/${id}`, { language });
 }
 
-export function getPopularMovies(page = 1): Promise<TMDBSearchResponse> {
+export function getPopularMovies(page = 1, language = "en-US"): Promise<TMDBSearchResponse> {
   return tmdbFetch<TMDBSearchResponse>("/movie/popular", {
     page: String(page),
+    language,
   });
 }
 
 export function getMovieRecommendations(
   id: number,
-  page = 1
+  page = 1,
+  language = "en-US"
 ): Promise<TMDBSearchResponse> {
   return tmdbFetch<TMDBSearchResponse>(`/movie/${id}/recommendations`, {
     page: String(page),
+    language,
   });
 }
 
@@ -141,10 +145,10 @@ export interface TMDBGenreListResponse {
   genres: TMDBGenre[];
 }
 
-export function getMovieGenres(): Promise<TMDBGenreListResponse> {
+export function getMovieGenres(language = "en-US"): Promise<TMDBGenreListResponse> {
   return tmdbFetch<TMDBGenreListResponse>(
     "/genre/movie/list",
-    undefined,
+    { language },
     REVALIDATE.reference
   );
 }
@@ -197,6 +201,7 @@ export function discoverMovies(options: {
   // candidate-pool query uses this to require a trustworthy tag/vote base
   // regardless of sort - see mood-search.ts's POOL_MIN_VOTE_COUNT.
   voteCountGte?: number;
+  language?: string;
 }): Promise<TMDBSearchResponse> {
   const {
     genreIds = [],
@@ -208,11 +213,13 @@ export function discoverMovies(options: {
     watchProviderIds = [],
     watchRegion,
     voteCountGte,
+    language = "en-US",
   } = options;
 
   const params: Record<string, string> = {
     sort_by: sortBy,
     page: String(page),
+    language,
     "vote_count.gte": String(
       voteCountGte ??
         (sortBy === "vote_average.desc" ? TOP_RATED_MIN_VOTE_COUNT : DEFAULT_MIN_VOTE_COUNT)
@@ -293,20 +300,23 @@ export interface TMDBPersonSearchResponse {
 
 export function searchPeople(
   query: string,
-  page = 1
+  page = 1,
+  language = "en-US"
 ): Promise<TMDBPersonSearchResponse> {
   return tmdbFetch<TMDBPersonSearchResponse>(
     "/search/person",
-    { query, page: String(page), include_adult: "false" },
+    { query, page: String(page), include_adult: "false", language },
     REVALIDATE.search
   );
 }
 
 export function getPopularPeople(
-  page = 1
+  page = 1,
+  language = "en-US"
 ): Promise<TMDBPersonSearchResponse> {
   return tmdbFetch<TMDBPersonSearchResponse>("/person/popular", {
     page: String(page),
+    language,
   });
 }
 
@@ -321,8 +331,8 @@ export interface TMDBPersonDetails {
   known_for_department: string;
 }
 
-export function getPersonDetails(id: number): Promise<TMDBPersonDetails> {
-  return tmdbFetch<TMDBPersonDetails>(`/person/${id}`);
+export function getPersonDetails(id: number, language = "en-US"): Promise<TMDBPersonDetails> {
+  return tmdbFetch<TMDBPersonDetails>(`/person/${id}`, { language });
 }
 
 export interface TMDBCastCredit extends TMDBMovie {
@@ -342,10 +352,12 @@ interface RawTMDBPersonMovieCredits {
 }
 
 export function getPersonMovieCredits(
-  id: number
+  id: number,
+  language = "en-US"
 ): Promise<TMDBPersonMovieCredits> {
   return tmdbFetch<RawTMDBPersonMovieCredits>(
-    `/person/${id}/movie_credits`
+    `/person/${id}/movie_credits`,
+    { language }
   ).then((data) => ({
     id: data.id,
     cast: data.cast.map((credit) => ({ ...credit, media_type: "movie" as const })),
@@ -366,8 +378,8 @@ export interface TMDBMovieCredits {
   cast: TMDBCastMember[];
 }
 
-export function getMovieCredits(id: number): Promise<TMDBMovieCredits> {
-  return tmdbFetch<TMDBMovieCredits>(`/movie/${id}/credits`);
+export function getMovieCredits(id: number, language = "en-US"): Promise<TMDBMovieCredits> {
+  return tmdbFetch<TMDBMovieCredits>(`/movie/${id}/credits`, { language });
 }
 
 // --- TV -----------------------------------------------------------------
@@ -424,24 +436,29 @@ function mapTVSearchResponse(data: RawTMDBSearchResponse): TMDBSearchResponse {
   return { ...data, results: data.results.map(mapTVShowToMovieShape) };
 }
 
-export function searchTV(query: string, page = 1): Promise<TMDBSearchResponse> {
+export function searchTV(
+  query: string,
+  page = 1,
+  language = "en-US"
+): Promise<TMDBSearchResponse> {
   return tmdbFetch<RawTMDBSearchResponse>(
     "/search/tv",
-    { query, page: String(page), include_adult: "false" },
+    { query, page: String(page), include_adult: "false", language },
     REVALIDATE.search
   ).then(mapTVSearchResponse);
 }
 
-export function getPopularTV(page = 1): Promise<TMDBSearchResponse> {
+export function getPopularTV(page = 1, language = "en-US"): Promise<TMDBSearchResponse> {
   return tmdbFetch<RawTMDBSearchResponse>("/tv/popular", {
     page: String(page),
+    language,
   }).then(mapTVSearchResponse);
 }
 
-export function getTVGenres(): Promise<TMDBGenreListResponse> {
+export function getTVGenres(language = "en-US"): Promise<TMDBGenreListResponse> {
   return tmdbFetch<TMDBGenreListResponse>(
     "/genre/tv/list",
-    undefined,
+    { language },
     REVALIDATE.reference
   );
 }
@@ -469,6 +486,7 @@ export function discoverTV(options: {
   watchRegion?: string;
   // See discoverMovies.
   voteCountGte?: number;
+  language?: string;
 }): Promise<TMDBSearchResponse> {
   const {
     genreIds = [],
@@ -480,11 +498,13 @@ export function discoverTV(options: {
     watchProviderIds = [],
     watchRegion,
     voteCountGte,
+    language = "en-US",
   } = options;
 
   const params: Record<string, string> = {
     sort_by: sortBy,
     page: String(page),
+    language,
     "vote_count.gte": String(
       voteCountGte ??
         (sortBy === "vote_average.desc" ? TOP_RATED_MIN_VOTE_COUNT : DEFAULT_MIN_VOTE_COUNT)
@@ -557,8 +577,8 @@ export interface TMDBTVDetails {
   episode_run_time: number[];
 }
 
-export function getTVDetails(id: number): Promise<TMDBTVDetails> {
-  return tmdbFetch<RawTMDBTVDetails>(`/tv/${id}`).then((data) => ({
+export function getTVDetails(id: number, language = "en-US"): Promise<TMDBTVDetails> {
+  return tmdbFetch<RawTMDBTVDetails>(`/tv/${id}`, { language }).then((data) => ({
     id: data.id,
     title: data.name,
     original_title: data.original_name,
@@ -587,15 +607,17 @@ export function getTVExternalIds(id: number): Promise<TMDBExternalIds> {
 
 export function getTVRecommendations(
   id: number,
-  page = 1
+  page = 1,
+  language = "en-US"
 ): Promise<TMDBSearchResponse> {
   return tmdbFetch<RawTMDBSearchResponse>(`/tv/${id}/recommendations`, {
     page: String(page),
+    language,
   }).then(mapTVSearchResponse);
 }
 
-export function getTVCredits(id: number): Promise<TMDBMovieCredits> {
-  return tmdbFetch<TMDBMovieCredits>(`/tv/${id}/credits`);
+export function getTVCredits(id: number, language = "en-US"): Promise<TMDBMovieCredits> {
+  return tmdbFetch<TMDBMovieCredits>(`/tv/${id}/credits`, { language });
 }
 
 export interface TMDBWatchProvider {
@@ -632,10 +654,12 @@ interface RawTMDBTVCastCredit extends RawTMDBTVShow {
 }
 
 export function getPersonTVCredits(
-  id: number
+  id: number,
+  language = "en-US"
 ): Promise<TMDBPersonMovieCredits> {
   return tmdbFetch<{ id: number; cast: RawTMDBTVCastCredit[] }>(
-    `/person/${id}/tv_credits`
+    `/person/${id}/tv_credits`,
+    { language }
   ).then((data) => ({
     id: data.id,
     cast: data.cast.map((credit) => ({

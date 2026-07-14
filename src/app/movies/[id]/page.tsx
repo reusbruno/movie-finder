@@ -16,6 +16,8 @@ import { MovieGrid } from "@/components/movie-grid";
 import { ScoreBadges } from "@/components/score-badges";
 import { CastList } from "@/components/cast-list";
 import { WatchProviders } from "@/components/watch-providers";
+import { isLocale, DEFAULT_LOCALE, TMDB_LANGUAGE } from "@/lib/i18n/locale";
+import { getDictionary } from "@/lib/i18n";
 
 const MAX_CAST_MEMBERS = 12;
 // Caps how many "More like this" recommendations get rating-enriched.
@@ -29,15 +31,28 @@ const POSTER_BASE_URL = "https://image.tmdb.org/t/p/w500";
 
 export default async function MovieDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  // No cookies/middleware in this app (see language-provider.tsx) - a
+  // Server Component has no other way to learn the client's persisted
+  // locale, so internal links that point here carry it explicitly (see
+  // movie-card.tsx, header-search.tsx, etc.). Absent (a bare/shared/pasted
+  // URL) correctly falls back to the same pt-BR default the rest of the
+  // app's SSR content uses.
+  searchParams: Promise<{ lang?: string }>;
 }) {
   const { id } = await params;
   const movieId = Number(id);
+  const { lang } = await searchParams;
 
   if (!Number.isInteger(movieId) || movieId < 1) {
     notFound();
   }
+
+  const locale = lang && isLocale(lang) ? lang : DEFAULT_LOCALE;
+  const language = TMDB_LANGUAGE[locale];
+  const t = getDictionary(locale);
 
   // Started immediately, alongside getMovieDetails below - none of these
   // three depend on the details response. getMovieRatings (not a direct
@@ -45,9 +60,9 @@ export default async function MovieDetailPage({
   // every grid/mood-search/blend enrichment - a movie already looked up
   // elsewhere in the last 24h costs nothing here instead of re-spending
   // OMDb quota on every detail-page visit.
-  const recommendationsPromise = getMovieRecommendations(movieId);
+  const recommendationsPromise = getMovieRecommendations(movieId, 1, language);
   const ratingsPromise = getMovieRatings(movieId);
-  const creditsPromise = getMovieCredits(movieId);
+  const creditsPromise = getMovieCredits(movieId, language);
   // This title's own keywords, for "why this match" on the recommendations
   // below - shares the same cache blend/mood search use, so a title looked
   // up elsewhere costs nothing here.
@@ -70,7 +85,7 @@ export default async function MovieDetailPage({
 
   let details;
   try {
-    details = await getMovieDetails(movieId);
+    details = await getMovieDetails(movieId, language);
   } catch (error) {
     if (error instanceof TMDBError && error.status === 404) {
       notFound();
@@ -108,14 +123,14 @@ export default async function MovieDetailPage({
         href="/movies"
         className="w-fit text-sm text-foreground/60 hover:text-foreground"
       >
-        ← Back to Movies
+        {t.detail.backToMovies}
       </Link>
       <div className="flex flex-col gap-6 sm:flex-row">
         <div className="relative aspect-[2/3] w-full max-w-[220px] shrink-0 overflow-hidden rounded-lg bg-black/[.04] dark:bg-white/[.06]">
           {details.poster_path ? (
             <Image
               src={`${POSTER_BASE_URL}${details.poster_path}`}
-              alt={`${details.title} poster`}
+              alt={t.watchlistButton.posterAlt(details.title)}
               fill
               sizes="(min-width: 640px) 220px, 100vw"
               preload
@@ -123,7 +138,7 @@ export default async function MovieDetailPage({
             />
           ) : (
             <div className="flex h-full items-center justify-center p-4 text-center text-sm text-foreground/60">
-              No poster available
+              {t.common.noPosterAvailable}
             </div>
           )}
         </div>
@@ -145,7 +160,7 @@ export default async function MovieDetailPage({
               imdbRating={ratings.imdbRating}
               rtScore={ratings.rottenTomatoesScore}
             />
-            {details.runtime ? ` · ${details.runtime} min` : ""}
+            {details.runtime ? ` · ${t.detail.runtimeMinutes(details.runtime)}` : ""}
             {details.genres.length > 0
               ? ` · ${details.genres.map((genre) => genre.name).join(", ")}`
               : ""}
@@ -165,18 +180,19 @@ export default async function MovieDetailPage({
 
       {topCast.length > 0 && (
         <div className="flex flex-col gap-4">
-          <h2 className="font-display text-lg tracking-wide">Cast</h2>
-          <CastList cast={topCast} />
+          <h2 className="font-display text-lg tracking-wide">{t.detail.cast}</h2>
+          <CastList cast={topCast} lang={locale} />
         </div>
       )}
 
       <div className="flex flex-col gap-4">
         <h2 className="font-display text-lg tracking-wide">
-          More like this
+          {t.detail.moreLikeThis}
         </h2>
         <MovieGrid
           movies={recommendationsWithRatings}
           canExplainMore={isAnthropicAvailable()}
+          lang={locale}
         />
       </div>
     </div>
