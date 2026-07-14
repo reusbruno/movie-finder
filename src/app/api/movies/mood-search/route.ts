@@ -24,6 +24,7 @@ import { isWatchRegion } from "@/lib/watch-providers";
 import { TMDB_LANGUAGE } from "@/lib/i18n/locale";
 import { getDictionary } from "@/lib/i18n";
 import { resolveLocale } from "@/lib/i18n/request";
+import { filterByPersonalStatus, isMyStatusFilter } from "@/lib/watchlist-filter";
 
 const MAX_QUERY_LENGTH = 300;
 // This route spends Anthropic credits per call - generous for a human
@@ -68,6 +69,8 @@ export async function POST(request: NextRequest) {
     watchRegion,
     page: pageRaw,
     language: languageRaw,
+    myStatus: myStatusRaw,
+    minRating: minRatingRaw,
   } = (body ?? {}) as Record<string, unknown>;
 
   const resolvedLocale = resolveLocale(typeof languageRaw === "string" ? languageRaw : null);
@@ -148,6 +151,24 @@ export async function POST(request: NextRequest) {
   }
   if (watchRegion !== undefined && !isWatchRegion(watchRegion as string)) {
     return NextResponse.json({ error: "Field 'watchRegion' is not a supported region" }, { status: 400 });
+  }
+  if (myStatusRaw !== undefined && !isMyStatusFilter(myStatusRaw as string)) {
+    return NextResponse.json(
+      { error: "Field 'myStatus' must be one of: all, watched, unwatched" },
+      { status: 400 }
+    );
+  }
+  const myStatus =
+    typeof myStatusRaw === "string" && isMyStatusFilter(myStatusRaw) ? myStatusRaw : "all";
+  let minRating: number | null = null;
+  if (minRatingRaw !== undefined) {
+    minRating = Number(minRatingRaw);
+    if (!Number.isInteger(minRating) || minRating < 1 || minRating > 5) {
+      return NextResponse.json(
+        { error: "Field 'minRating' must be an integer between 1 and 5" },
+        { status: 400 }
+      );
+    }
   }
 
   const overrides = {
@@ -258,6 +279,7 @@ export async function POST(request: NextRequest) {
     );
     const enriched = await enrichMoviesWithRatings(ranked);
     const filtered = enriched.filter((movie) => passesRatingFilters(movie.ratings, minImdb, minRt));
+    const personalized = await filterByPersonalStatus(filtered, "movie", myStatus, minRating);
 
     // Once genre is user-overridden, the applied set *is* the user's own
     // checkbox pick (already visible via the filter controls) - showing
@@ -277,7 +299,7 @@ export async function POST(request: NextRequest) {
     const keywordTerms = [...keywordNames.values()];
 
     return NextResponse.json({
-      results: filtered,
+      results: personalized,
       interpretation: {
         genreNames: appliedGenreNames,
         keywordTerms,

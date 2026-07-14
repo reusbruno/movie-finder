@@ -11,6 +11,7 @@ import { useAuth } from "@/lib/use-auth";
 import type { WatchlistMediaType } from "@/lib/watchlist";
 import { showToast } from "@/lib/toast";
 import { ScoreBadges } from "@/components/score-badges";
+import { WatchedButton } from "@/components/watched-button";
 import { useLanguage } from "@/components/language-provider";
 
 // How long the click-pulse holds its scaled-up state before settling back -
@@ -178,6 +179,7 @@ export function MovieCard({
       className="group relative block aspect-[2/3] overflow-hidden rounded-lg bg-black/[.04] shadow-none transition-all duration-200 ease-out hover:z-10 hover:scale-[1.04] hover:shadow-lg hover:shadow-black/40 focus-visible:z-10 focus-visible:scale-[1.04] focus-visible:ring-2 focus-visible:ring-accent dark:bg-white/[.06]"
     >
       <WatchlistButton id={movie.id} mediaType={mediaType} title={movie.title} />
+      <WatchedButton id={movie.id} mediaType={mediaType} title={movie.title} />
       {movie.poster_path ? (
         <Image
           src={`${POSTER_BASE_URL}${movie.poster_path}`}

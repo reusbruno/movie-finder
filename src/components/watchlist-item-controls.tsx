@@ -1,97 +1,67 @@
 "use client";
 
 import { useState } from "react";
-import { Eye, Star } from "lucide-react";
+import { Star } from "lucide-react";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useWatchlist } from "@/lib/use-watchlist";
 import type { WatchlistMediaType } from "@/lib/watchlist";
-import { showToast } from "@/lib/toast";
 import { useLanguage } from "@/components/language-provider";
 
 const RATING_VALUES = [1, 2, 3, 4, 5] as const;
 
-// Same duration as movie-card.tsx's WatchlistButton pulse - both should
-// feel identically "instant" on click.
-const PULSE_MS = 180;
-
-// RLS (see supabase/migrations/0001_watchlist.sql) already scopes every
-// query to the caller's own rows, so tmdb_id + media_type is enough to
-// target the right row without also filtering on user_id here. Returns
-// the write error (if any) so callers that want success/failure feedback
-// (the watched toggle, below) can react to it - callers that don't
-// (rating, notes) simply ignore the return value, unchanged from before.
-async function updateRow(
-  id: number,
-  mediaType: WatchlistMediaType,
-  patch: { watched?: boolean; rating?: number | null; notes?: string | null }
-) {
+// Notes has no other UI anywhere else, so it's the one field here that
+// isn't already covered by the shared watchlist store/cards - kept as a
+// small local update, same shape as before.
+async function updateNotes(id: number, mediaType: WatchlistMediaType, notes: string | null) {
   const supabase = getSupabaseBrowserClient();
-  const { error } = await supabase
-    .from("watchlist")
-    .update(patch)
-    .eq("tmdb_id", id)
-    .eq("media_type", mediaType);
-  return error;
+  await supabase.from("watchlist").update({ notes }).eq("tmdb_id", id).eq("media_type", mediaType);
 }
 
+// This component no longer has its own "watched" toggle - since
+// in_watchlist/watched are now independent fields (see
+// supabase/migrations/0002_decouple_watched.sql), every card on this page
+// (via the shared MovieGrid -> MovieCard -> WatchedButton, same as every
+// other grid) already has its own eye icon. Duplicating a second watched
+// toggle here would show two controls for the same state and risked
+// drifting out of sync (this component previously tracked watched in
+// local useState, seeded once from the server; the card's own button
+// writes through the shared client-side store - the two would disagree
+// the moment either one changed without a full page reload). Rating still
+// lives here (nothing else shows it) and now reads live from that same
+// shared store so it stays in sync with the card's own post-watched
+// rating popover, rather than a second local copy of the same value.
 export function WatchlistItemControls({
   id,
   mediaType,
   title,
-  initialWatched,
-  initialRating,
   initialNotes,
 }: {
   id: number;
   mediaType: WatchlistMediaType;
   title: string;
-  initialWatched: boolean;
-  initialRating: number | null;
   initialNotes: string | null;
 }) {
   const { t } = useLanguage();
-  const [watched, setWatched] = useState(initialWatched);
-  const [rating, setRating] = useState<number | null>(initialRating);
+  const { getWatched, getRating, setWatched } = useWatchlist();
+  const watched = getWatched(id, mediaType);
+  const rating = getRating(id, mediaType);
   const [notes, setNotes] = useState(initialNotes ?? "");
   const [notesDirty, setNotesDirty] = useState(false);
   const [savingNotes, setSavingNotes] = useState(false);
-  const [watchedPulsing, setWatchedPulsing] = useState(false);
-
-  function handleToggleWatched() {
-    const next = !watched;
-
-    // Fires immediately on click, same as movie-card.tsx's WatchlistButton
-    // pulse - the click should feel instant regardless of the write's
-    // actual latency.
-    setWatchedPulsing(true);
-    setTimeout(() => setWatchedPulsing(false), PULSE_MS);
-
-    setWatched(next);
-    void updateRow(id, mediaType, { watched: next }).then((error) => {
-      if (error) {
-        // Roll back the optimistic toggle and surface the failure the
-        // same way the watchlist add/remove button does.
-        setWatched(!next);
-        showToast(t.watchlist.watchedUpdateFailedToast, "error");
-        return;
-      }
-      showToast(
-        next ? t.watchlist.markedWatchedToast : t.watchlist.unmarkedWatchedToast,
-        "success"
-      );
-    });
-  }
 
   function handleRate(value: number) {
     // Clicking the star that's already the current rating clears it -
-    // otherwise there'd be no way to remove a rating once set.
+    // otherwise there'd be no way to remove a rating once set. Passes the
+    // current watched value through unchanged - rating here shouldn't
+    // silently flip watched either way, matching setWatched's own
+    // "omit to leave untouched" contract for the fields it doesn't own.
     const next = rating === value ? null : value;
-    setRating(next);
-    void updateRow(id, mediaType, { rating: next });
+    void setWatched(id, mediaType, watched, next);
   }
 
   async function handleSaveNotes() {
     setSavingNotes(true);
-    await updateRow(id, mediaType, { notes: notes.trim() === "" ? null : notes });
+    await updateNotes(id, mediaType, notes.trim() === "" ? null : notes);
     setSavingNotes(false);
     setNotesDirty(false);
   }
@@ -100,26 +70,6 @@ export function WatchlistItemControls({
     <div className="flex flex-col gap-2 rounded-lg border border-black/[.08] p-4 sm:flex-row sm:items-start sm:gap-4 dark:border-white/[.145]">
       <p className="text-sm font-medium sm:w-40 sm:shrink-0 sm:pt-1">{title}</p>
       <div className="flex flex-1 flex-col gap-2">
-        <div className="flex w-fit items-center gap-2">
-          <button
-            type="button"
-            onClick={handleToggleWatched}
-            aria-pressed={watched}
-            aria-label={t.watchlist.watched}
-            title={t.watchlist.watched}
-            className={`flex h-7 w-7 items-center justify-center rounded-full transition-all duration-150 ${
-              watched ? "text-foreground" : "text-foreground/30 hover:text-foreground/60"
-            } ${watchedPulsing ? "scale-125" : "scale-100"}`}
-          >
-            {/* Unlike Bookmark's fill toggle, Eye's shape (an outer almond
-                plus an inner pupil circle) reads as an indistinct blob when
-                solid-filled at this size - confirmed via screenshot, not
-                assumed. State is conveyed by color weight alone instead. */}
-            <Eye className="h-4 w-4" />
-          </button>
-          <span className="text-sm text-foreground/70">{t.watchlist.watched}</span>
-        </div>
-
         <div className="flex items-center gap-1" role="radiogroup" aria-label={t.watchlist.rating}>
           {RATING_VALUES.map((value) => (
             <button

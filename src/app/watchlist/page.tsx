@@ -67,10 +67,17 @@ export default async function WatchlistPage({
     redirect(`/sign-in?next=${encodeURIComponent("/watchlist")}`);
   }
 
+  // Only the active to-watch list - watched/rating now persist
+  // independently of wishlist membership (see
+  // supabase/migrations/0002_decouple_watched.sql), so a row can exist
+  // here with watched:true/rating:set from before it was ever wishlisted,
+  // or survive after being removed from the wishlist - neither belongs on
+  // this page, which is specifically "what's still in my wishlist."
   const { data: rawRows, error: queryError } = await supabase
     .from("watchlist")
     .select("tmdb_id, media_type, watched, rating, notes")
     .eq("user_id", user.id)
+    .eq("in_watchlist", true)
     .order("added_at", { ascending: false });
 
   // Cast rather than `.returns<T>()` - the server client has no Database
@@ -97,8 +104,12 @@ export default async function WatchlistPage({
               ...toCardShape(details),
               ratings,
               mediaType: row.media_type,
-              watched: row.watched,
-              rating: row.rating,
+              // watched/rating are no longer passed as initial props - the
+              // card (MovieGrid -> MovieCard -> WatchedButton, same as
+              // every other grid) and WatchlistItemControls' rating stars
+              // both read them live from the shared client-side watchlist
+              // store instead, so there's only one source of truth for
+              // either value on this page (see watchlist-item-controls.tsx).
               notes: row.notes,
             };
           } catch {
@@ -138,8 +149,6 @@ export default async function WatchlistPage({
                 id={item.id}
                 mediaType={item.mediaType}
                 title={item.title}
-                initialWatched={item.watched}
-                initialRating={item.rating}
                 initialNotes={item.notes}
               />
             ))}

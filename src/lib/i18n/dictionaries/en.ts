@@ -13,6 +13,7 @@ const en = {
     unknownYear: "Unknown year",
     tryAgain: "Try again",
     clear: "Clear",
+    dismiss: "Dismiss",
   },
   header: {
     watchlist: "Watchlist",
@@ -54,6 +55,11 @@ const en = {
     minImdb: "Min IMDb",
     minRt: "Min RT",
     any: "Any",
+    myStatus: "My status",
+    myStatusAll: "All",
+    myStatusUnwatched: "Not watched",
+    myRating: "My rating",
+    minRatingOption: (value: number) => `${value}+ stars`,
   },
   results: {
     heading: (context: string, count: number) =>
@@ -75,6 +81,8 @@ const en = {
     removedToast: "Removed from your watchlist",
     addFailedToast: "Couldn't add to your watchlist",
     removeFailedToast: "Couldn't remove from your watchlist",
+    markWatchedAria: (title: string) => `Mark ${title} as watched`,
+    unmarkWatchedAria: (title: string) => `Unmark ${title} as watched`,
   },
   explain: {
     expanding: "Expanding…",

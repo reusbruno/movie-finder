@@ -14,6 +14,7 @@ import { SkeletonGrid } from "@/components/skeletons";
 import { HeroSearch } from "@/components/hero-search";
 import { InterpretationChips } from "@/components/interpretation-chips";
 import { useWatchRegion } from "@/lib/use-watch-region";
+import { useAuth } from "@/lib/use-auth";
 import { useLanguage } from "@/components/language-provider";
 import type { Dictionary } from "@/lib/i18n";
 import { DEFAULT_LOCALE } from "@/lib/i18n/locale";
@@ -124,6 +125,15 @@ export function MediaExplorer<TSortBy extends string>({
   const [sortBy, setSortBy] = useState<TSortBy>(defaultSort);
   const [minImdb, setMinImdb] = useState("");
   const [minRt, setMinRt] = useState("");
+  // "My status"/"My rating" - signed-in only (the panel hides this row
+  // entirely when signed out, see the FilterPanel render below), filtered
+  // server-side against the caller's own watchlist rows (see
+  // src/lib/watchlist-filter.ts). minRating only means anything combined
+  // with status "watched" - reset alongside it so a stale rating value
+  // can't linger invisibly if status is later switched back to "watched".
+  const [myStatus, setMyStatus] = useState<"all" | "watched" | "unwatched">("all");
+  const [minRating, setMinRating] = useState("");
+  const { user } = useAuth();
   const [selectedWatchProviders, setSelectedWatchProviders] = useState<number[]>([]);
   const { region } = useWatchRegion();
   // Provider ids aren't portable across regions (e.g. Prime Video is a
@@ -283,7 +293,9 @@ export function MediaExplorer<TSortBy extends string>({
     selectedGenres.length > 0 ||
     minImdb !== "" ||
     minRt !== "" ||
-    activeWatchProviderIds.length > 0;
+    activeWatchProviderIds.length > 0 ||
+    myStatus !== "all" ||
+    minRating !== "";
 
   // Blend and mood search are both explicit, deliberate actions (submit, not
   // live-typing), so they take priority over the passive search/filter
@@ -330,6 +342,8 @@ export function MediaExplorer<TSortBy extends string>({
       minRt,
       providers: [...activeWatchProviderIds].sort((a, b) => a - b),
       region,
+      myStatus,
+      minRating,
       // A locale-only change is still "a genuine change" for this guard's
       // purposes - without it here, toggling language while mood is active
       // would produce the same key as before and the composition effect
@@ -348,6 +362,10 @@ export function MediaExplorer<TSortBy extends string>({
       overrides.watchProviderIds = activeWatchProviderIds;
       overrides.watchRegion = region;
     }
+    // Only ever set while signed in - the filter UI itself is hidden when
+    // signed out, so myStatus/minRating can't be non-default in that case.
+    if (myStatus !== "all") overrides.myStatus = myStatus;
+    if (minRating) overrides.minRating = Number(minRating);
     return overrides;
   }
 
@@ -495,6 +513,21 @@ export function MediaExplorer<TSortBy extends string>({
   function updateMinRt(value: string) {
     if (blendActive) clearBlend();
     setMinRt(value);
+  }
+
+  function updateMyStatus(value: "all" | "watched" | "unwatched") {
+    if (blendActive) clearBlend();
+    setMyStatus(value);
+    // My rating is only meaningful combined with "Watched" (the select
+    // below is disabled otherwise) - clear it rather than leave an
+    // invisible, no-longer-applicable value active behind a disabled
+    // control.
+    if (value !== "watched") setMinRating("");
+  }
+
+  function updateMinRating(value: string) {
+    if (blendActive) clearBlend();
+    setMinRating(value);
   }
 
   function toggleWatchProvider(id: number) {
@@ -703,7 +736,25 @@ export function MediaExplorer<TSortBy extends string>({
       params.set("watch_providers", activeWatchProviderIds.join(","));
       params.set("region", region);
     }
+    if (myStatus !== "all") {
+      params.set("my_status", myStatus);
+    }
+    if (minRating) {
+      params.set("min_rating", minRating);
+    }
     return params;
+  }
+
+  // Same my_status/min_rating fragment buildDiscoverParams sets, for the
+  // two search fetches below - they build their URL as a plain template
+  // string rather than URLSearchParams, so this stays a query-string
+  // fragment (leading "&", empty when there's nothing to add) instead of
+  // an object.
+  function personalFilterQueryFragment(): string {
+    let fragment = "";
+    if (myStatus !== "all") fragment += `&my_status=${myStatus}`;
+    if (minRating) fragment += `&min_rating=${minRating}`;
+    return fragment;
   }
 
   // Tied to the genre/sort/rating filters specifically (via the same
@@ -764,7 +815,7 @@ export function MediaExplorer<TSortBy extends string>({
 
       try {
         const response = await fetch(
-          `${searchEndpoint}?query=${encodeURIComponent(trimmedQuery)}&language=${locale}`,
+          `${searchEndpoint}?query=${encodeURIComponent(trimmedQuery)}&language=${locale}${personalFilterQueryFragment()}`,
           { signal: controller.signal }
         );
         const data = await response.json();
@@ -793,7 +844,7 @@ export function MediaExplorer<TSortBy extends string>({
 
     return () => clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trimmedQuery, searchEndpoint, locale]);
+  }, [trimmedQuery, searchEndpoint, locale, myStatus, minRating]);
 
   async function loadMoreSearch() {
     searchAbortRef.current?.abort();
@@ -808,7 +859,7 @@ export function MediaExplorer<TSortBy extends string>({
 
     try {
       const response = await fetch(
-        `${searchEndpoint}?query=${encodeURIComponent(trimmedQuery)}&page=${nextPage}&language=${locale}`,
+        `${searchEndpoint}?query=${encodeURIComponent(trimmedQuery)}&page=${nextPage}&language=${locale}${personalFilterQueryFragment()}`,
         { signal: controller.signal }
       );
       const data = await response.json();
@@ -899,6 +950,8 @@ export function MediaExplorer<TSortBy extends string>({
     minRt,
     activeWatchProviderIds,
     region,
+    myStatus,
+    minRating,
     moodQuery,
     discoverEndpoint,
     locale,
@@ -926,7 +979,19 @@ export function MediaExplorer<TSortBy extends string>({
     if (currentFilterKey() === moodFetchKeyRef.current) return;
     runMoodDiscovery({ cachedInterpretation: moodResolvedParams });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedGenres, sortBy, minImdb, minRt, activeWatchProviderIds, region, moodQuery, moodResolvedParams, locale]);
+  }, [
+    selectedGenres,
+    sortBy,
+    minImdb,
+    minRt,
+    activeWatchProviderIds,
+    region,
+    myStatus,
+    minRating,
+    moodQuery,
+    moodResolvedParams,
+    locale,
+  ]);
 
   async function loadMoreDiscover() {
     discoverAbortRef.current?.abort();
@@ -1113,7 +1178,9 @@ export function MediaExplorer<TSortBy extends string>({
     (sortBy !== defaultSort ? 1 : 0) +
     (minImdb ? 1 : 0) +
     (minRt ? 1 : 0) +
-    (activeWatchProviderIds.length > 0 ? 1 : 0);
+    (activeWatchProviderIds.length > 0 ? 1 : 0) +
+    (myStatus !== "all" ? 1 : 0) +
+    (minRating ? 1 : 0);
   // Shown on the collapsed "Browse with filters" entry point so results
   // never look mysteriously filtered/searched with no visible cause once
   // the row that set them is hidden - includes the quick-search query too,
@@ -1305,6 +1372,58 @@ export function MediaExplorer<TSortBy extends string>({
               selectedProviderIds={selectedWatchProviders}
               onToggle={toggleWatchProvider}
             />
+            {/* Personal watch-history filters - signed-in only, filtered
+                server-side against the caller's own watchlist rows (see
+                src/lib/watchlist-filter.ts). Hidden entirely rather than
+                shown-disabled when signed out - there's nothing to filter
+                by yet, and a disabled control with no explanation reads
+                as broken rather than as "sign in for this." */}
+            {user && (
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="flex items-center gap-2 text-xs">
+                  {t.filters.myStatus}
+                  <select
+                    value={myStatus}
+                    onChange={(event) =>
+                      updateMyStatus(event.target.value as "all" | "watched" | "unwatched")
+                    }
+                    className="rounded-md border border-black/[.08] bg-transparent px-2 py-1 text-foreground outline-none focus:border-foreground/40 dark:border-white/[.145]"
+                  >
+                    <option value="all" className="bg-background text-foreground">
+                      {t.filters.myStatusAll}
+                    </option>
+                    <option value="unwatched" className="bg-background text-foreground">
+                      {t.filters.myStatusUnwatched}
+                    </option>
+                    <option value="watched" className="bg-background text-foreground">
+                      {t.watchlist.watched}
+                    </option>
+                  </select>
+                </label>
+                <label className="flex items-center gap-2 text-xs">
+                  {t.filters.myRating}
+                  <select
+                    value={minRating}
+                    onChange={(event) => updateMinRating(event.target.value)}
+                    disabled={myStatus !== "watched"}
+                    className="rounded-md border border-black/[.08] bg-transparent px-2 py-1 text-foreground outline-none focus:border-foreground/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/[.145]"
+                  >
+                    <option value="" className="bg-background text-foreground">
+                      {t.filters.any}
+                    </option>
+                    {[1, 2, 3, 4, 5].map((value) => (
+                      <option
+                        key={value}
+                        value={String(value)}
+                        className="bg-background text-foreground"
+                      >
+                        {t.filters.minRatingOption(value)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
             {basePath === "series" && (
               <p className="text-xs text-foreground/50">{t.series.ratingsFootnote}</p>
             )}

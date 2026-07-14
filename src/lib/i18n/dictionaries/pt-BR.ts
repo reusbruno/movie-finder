@@ -12,6 +12,7 @@ const ptBR: Dictionary = {
     unknownYear: "Ano desconhecido",
     tryAgain: "Tentar novamente",
     clear: "Limpar",
+    dismiss: "Dispensar",
   },
   header: {
     watchlist: "Minha Lista",
@@ -53,6 +54,11 @@ const ptBR: Dictionary = {
     minImdb: "IMDb mín.",
     minRt: "RT mín.",
     any: "Qualquer",
+    myStatus: "Meu status",
+    myStatusAll: "Todos",
+    myStatusUnwatched: "Não assistido",
+    myRating: "Minha avaliação",
+    minRatingOption: (value: number) => `${value}+ estrelas`,
   },
   results: {
     heading: (context: string, count: number) =>
@@ -74,6 +80,8 @@ const ptBR: Dictionary = {
     removedToast: "Removido da sua lista",
     addFailedToast: "Não foi possível adicionar à sua lista",
     removeFailedToast: "Não foi possível remover da sua lista",
+    markWatchedAria: (title: string) => `Marcar ${title} como assistido`,
+    unmarkWatchedAria: (title: string) => `Desmarcar ${title} como assistido`,
   },
   explain: {
     expanding: "Expandindo…",

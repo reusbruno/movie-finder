@@ -11,6 +11,7 @@ import { isWatchRegion } from "@/lib/watch-providers";
 import { TMDB_LANGUAGE } from "@/lib/i18n/locale";
 import { getDictionary } from "@/lib/i18n";
 import { resolveLocale } from "@/lib/i18n/request";
+import { filterByPersonalStatus, isMyStatusFilter } from "@/lib/watchlist-filter";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -106,6 +107,27 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  const myStatusParam = searchParams.get("my_status");
+  if (myStatusParam && !isMyStatusFilter(myStatusParam)) {
+    return NextResponse.json(
+      { error: "Query parameter 'my_status' must be one of: all, watched, unwatched" },
+      { status: 400 }
+    );
+  }
+  const myStatus = myStatusParam && isMyStatusFilter(myStatusParam) ? myStatusParam : "all";
+
+  const minRatingParam = searchParams.get("min_rating");
+  let minRating: number | null = null;
+  if (minRatingParam) {
+    minRating = Number(minRatingParam);
+    if (!Number.isInteger(minRating) || minRating < 1 || minRating > 5) {
+      return NextResponse.json(
+        { error: "Query parameter 'min_rating' must be an integer between 1 and 5" },
+        { status: 400 }
+      );
+    }
+  }
+
   try {
     const results = await discoverMovies({
       genreIds,
@@ -119,7 +141,8 @@ export async function GET(request: NextRequest) {
     const filtered = enriched.filter((movie) =>
       passesRatingFilters(movie.ratings, minImdb, minRt)
     );
-    return NextResponse.json({ ...results, results: filtered });
+    const personalized = await filterByPersonalStatus(filtered, "movie", myStatus, minRating);
+    return NextResponse.json({ ...results, results: personalized });
   } catch (error) {
     if (error instanceof TMDBError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
