@@ -524,14 +524,19 @@ export function MediaExplorer<TSortBy extends string>({
   // Popular items and genres are both seeded server-side, always in the
   // app-wide pt-BR default (movies/page.tsx/series/page.tsx has no access
   // to the client's persisted locale - no cookies/middleware in this app).
-  // If the resolved client locale differs - a returning EN-persisted
-  // visitor, or a language toggle mid-session - re-fetch page 1 of Popular
-  // and the genre list in the correct language and replace what was
-  // seeded/previously fetched. A no-op for a genuinely new pt-BR visitor,
-  // whose locale already matches, so zero extra fetch and zero flash for
-  // the stated majority case.
+  // loadedLanguageRef tracks which language the currently-loaded
+  // popularItems/genres actually reflect - starts at DEFAULT_LOCALE since
+  // that's what the SSR seed used. Re-fetch whenever the resolved client
+  // locale no longer matches that, not just when it differs from
+  // DEFAULT_LOCALE - the naive "!== DEFAULT_LOCALE" check only fixed the
+  // very first mismatch (a returning EN-persisted visitor) and silently
+  // no-op'd every toggle back to pt-BR after an EN fetch had already run,
+  // leaving Popular/genres stuck in English. A genuinely new pt-BR visitor
+  // still matches the ref immediately, so zero extra fetch and zero flash
+  // for the stated majority case.
+  const loadedLanguageRef = useRef(DEFAULT_LOCALE);
   useEffect(() => {
-    if (locale === DEFAULT_LOCALE) return;
+    if (locale === loadedLanguageRef.current) return;
 
     let cancelled = false;
     Promise.all([
@@ -544,11 +549,13 @@ export function MediaExplorer<TSortBy extends string>({
         setPopularPage(1);
         setPopularTotalPages(popularData.total_pages ?? 1);
         setGenres(genresData.genres ?? []);
+        loadedLanguageRef.current = locale;
       })
       .catch(() => {
         // Best-effort - a failed correction just leaves Popular/genres in
-        // the SSR default language until the next locale change or reload,
-        // same tolerance as every other best-effort fetch in this app.
+        // whatever language they last successfully loaded until the next
+        // locale change or reload, same tolerance as every other
+        // best-effort fetch in this app.
       });
     return () => {
       cancelled = true;
