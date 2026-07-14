@@ -1320,7 +1320,12 @@ export function MediaExplorer<TSortBy extends string>({
       {error ? (
         <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
       ) : resultsPending ? (
-        <SkeletonGrid />
+        // The grid it's standing in for is trimmed once results land
+        // (below, via canLoadMore) in virtually every real case here - a
+        // fresh search/mood/discover/blend query's first page is a full
+        // 20-item page with more to paginate through - so matching that
+        // now avoids a skeleton-to-settled layout shift on the common path.
+        <SkeletonGrid trimTrailingRow />
       ) : (
         <>
           <div
