@@ -107,7 +107,7 @@ export default async function MovieDetailPage({
     "movie",
     genreNames,
     keywordNames,
-    (signals) => explainSingleRefMatch(signals, details.title)
+    (signals) => explainSingleRefMatch(signals, details.title, locale)
   );
   const recommendationsWithRatings = await enrichMoviesWithRatings(
     recommendationsWithExplanations

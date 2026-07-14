@@ -91,7 +91,7 @@ export default async function SeriesDetailPage({
     "tv",
     genreNames,
     keywordNames,
-    (signals) => explainSingleRefMatch(signals, details.title)
+    (signals) => explainSingleRefMatch(signals, details.title, locale)
   );
   const recommendationsWithRatings = await enrichTVWithRatings(
     recommendationsWithExplanations

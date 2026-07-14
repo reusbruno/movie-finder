@@ -17,6 +17,8 @@ import {
 } from "@/lib/anthropic-client";
 import { getMovieKeywordList, getTVKeywordList } from "@/lib/keywords";
 import { computeMatchSignals, blendSignalScore, explainMoodMatch } from "@/lib/match-explanation";
+import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n/locale";
+import { getDictionary } from "@/lib/i18n";
 
 export class MoodSearchError extends Error {
   constructor(
@@ -48,12 +50,12 @@ export function isMoodSearchAvailable(): boolean {
   return isAnthropicAvailable();
 }
 
-function getClient(): Anthropic {
+function getClient(locale: Locale): Anthropic {
   try {
     return getAnthropicClient();
   } catch (error) {
     if (error instanceof AnthropicUnavailableError) {
-      throw new MoodSearchError("Mood search is not configured", 503);
+      throw new MoodSearchError(getDictionary(locale).serverErrors.moodSearchNotConfigured, 503);
     }
     throw error;
   }
@@ -75,9 +77,11 @@ export interface MoodInterpretation {
 
 export async function interpretMoodQuery(
   query: string,
-  options: { genreNames: string[]; sortOptions: readonly string[] }
+  options: { genreNames: string[]; sortOptions: readonly string[]; locale?: Locale }
 ): Promise<MoodInterpretation> {
-  const anthropic = getClient();
+  const locale = options.locale ?? DEFAULT_LOCALE;
+  const t = getDictionary(locale);
+  const anthropic = getClient(locale);
 
   const schema = {
     type: "object" as const,
@@ -105,7 +109,12 @@ export async function interpretMoodQuery(
         type: "array",
         items: { type: "string" },
         description:
-          "Up to 5 short thematic or tonal keywords evoked by the query (e.g. 'slow burn', 'melancholic', 'time loop').",
+          "Up to 5 short thematic or tonal keywords evoked by the query (e.g. 'slow burn', " +
+          "'melancholic', 'time loop'). ALWAYS in English, regardless of what language the query " +
+          "itself is written in - these are matched against TMDB's keyword catalog, which is " +
+          "English-only, so a Portuguese (or any non-English) query should still produce English " +
+          "keyword tags (e.g. a Portuguese query evoking 'viagem no tempo' should still yield " +
+          "'time travel', not 'viagem no tempo').",
       },
       referenceTitles: {
         type: "array",
@@ -175,41 +184,45 @@ export async function interpretMoodQuery(
       system:
         `Today's date is ${today}. You translate a free-text mood or vibe description into ` +
         "structured filters for a movie/TV discovery search. Be conservative: only include " +
-        "genres, keywords, or titles you're confident are actually implied by the query.",
+        "genres, keywords, or titles you're confident are actually implied by the query. " +
+        "The query may be written in Portuguese, English, or any other language - interpret it " +
+        "in whichever language it's actually in, and don't require it to be in English. " +
+        "Regardless of the query's language, `genres` and `avoidGenres` must still only use " +
+        "values from the allowed list given in the schema exactly as spelled there (that list " +
+        "may itself be in Portuguese or English depending on the request) - never translate or " +
+        "invent a genre value outside that list. `keywords`, however, must always be in English " +
+        "no matter what language the query is in (see the keywords field's own description).",
       messages: [{ role: "user", content: query }],
       output_config: { format: { type: "json_schema", schema } },
     });
   } catch (error) {
     if (error instanceof Anthropic.AuthenticationError) {
-      throw new MoodSearchError("Mood search is not configured correctly", 503);
+      throw new MoodSearchError(t.serverErrors.moodSearchMisconfigured, 503);
     }
     if (error instanceof Anthropic.RateLimitError) {
-      throw new MoodSearchError(
-        "Mood search is temporarily rate-limited - try again shortly",
-        429
-      );
+      throw new MoodSearchError(t.serverErrors.moodSearchRateLimited, 429);
     }
     if (error instanceof Anthropic.APIError) {
-      throw new MoodSearchError("Mood search is temporarily unavailable", 502);
+      throw new MoodSearchError(t.serverErrors.moodSearchUnavailable, 502);
     }
     throw error;
   }
 
   if (response.stop_reason === "refusal") {
-    throw new MoodSearchError("Could not interpret that mood query", 422);
+    throw new MoodSearchError(t.serverErrors.moodSearchCouldNotInterpret, 422);
   }
 
   const textBlock = response.content.find(
     (block): block is Anthropic.TextBlock => block.type === "text"
   );
   if (!textBlock) {
-    throw new MoodSearchError("Could not interpret that mood query", 502);
+    throw new MoodSearchError(t.serverErrors.moodSearchCouldNotInterpret, 502);
   }
 
   try {
     return JSON.parse(textBlock.text) as MoodInterpretation;
   } catch {
-    throw new MoodSearchError("Could not interpret that mood query", 502);
+    throw new MoodSearchError(t.serverErrors.moodSearchCouldNotInterpret, 502);
   }
 }
 
@@ -567,7 +580,8 @@ export async function discoverAndRankMoodPool(
   // scoring) is rebuilt identically regardless of page - deterministic given
   // the same inputs, so a later page is genuinely "the next slice of the
   // already-ranked pool," not a new interpretation or a different ranking.
-  page: number = 1
+  page: number = 1,
+  locale: Locale = DEFAULT_LOCALE
 ): Promise<{
   results: (TMDBMovie & { matchExplanation: string | null })[];
   appliedGenreIds: number[];
@@ -642,7 +656,7 @@ export async function discoverAndRankMoodPool(
     return {
       candidate,
       score: blendSignalScore(signals) - clashCount * AVOID_GENRE_PENALTY,
-      matchExplanation: explainMoodMatch(signals),
+      matchExplanation: explainMoodMatch(signals, locale),
     };
   });
 

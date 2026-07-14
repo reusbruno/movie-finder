@@ -13,6 +13,7 @@ import {
   blendSignalScore,
   explainBlendMatch,
 } from "@/lib/match-explanation";
+import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n/locale";
 
 export class VibeBlendError extends Error {
   constructor(
@@ -84,7 +85,8 @@ export async function blendTitles(
   idA: number,
   idB: number,
   mediaType: MediaType,
-  language = "en-US"
+  language = "en-US",
+  locale: Locale = DEFAULT_LOCALE
 ): Promise<BlendResult> {
   if (idA === idB) {
     throw new VibeBlendError("Pick two different titles to blend", 400);
@@ -135,7 +137,7 @@ export async function blendTitles(
     return {
       candidate,
       score: blendSignalScore(signals) + recommendationScore,
-      matchExplanation: explainBlendMatch(signals, seedA.title, seedB.title, inRecA, inRecB),
+      matchExplanation: explainBlendMatch(signals, seedA.title, seedB.title, inRecA, inRecB, locale),
     };
   });
 

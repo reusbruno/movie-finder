@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const blend = await blendTitles(idA, idB, "tv", TMDB_LANGUAGE[locale]);
+    const blend = await blendTitles(idA, idB, "tv", TMDB_LANGUAGE[locale], locale);
     const start = (page - 1) * MAX_ENRICHED_BLEND_RESULTS;
     const topResults = blend.results.slice(start, start + MAX_ENRICHED_BLEND_RESULTS);
     const enriched = await enrichTVWithRatings(topResults);

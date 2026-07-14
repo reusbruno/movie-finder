@@ -1,6 +1,8 @@
 import { getMovieKeywordList, getTVKeywordList } from "@/lib/keywords";
 import type { TMDBMovie } from "@/lib/tmdb";
 import type { MovieWithRatings } from "@/lib/ratings";
+import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n/locale";
+import { getDictionary } from "@/lib/i18n";
 
 export type MediaType = "movie" | "tv";
 
@@ -84,13 +86,15 @@ export function explainBlendMatch(
   titleA: string,
   titleB: string,
   inRecA: boolean,
-  inRecB: boolean
+  inRecB: boolean,
+  locale: Locale = DEFAULT_LOCALE
 ): string | null {
+  const t = getDictionary(locale).matchExplanation;
   const top = signals.slice(0, MAX_SIGNALS_SHOWN);
 
   if (top.length === 0) {
     if (inRecA && inRecB) {
-      return `Recommended alongside both ${titleA} and ${titleB}.`;
+      return t.recommendedAlongsideBoth(titleA, titleB);
     }
     return null;
   }
@@ -100,25 +104,26 @@ export function explainBlendMatch(
   const bNames = top.filter((s) => s.attachedTo === "b").map((s) => s.name);
 
   if (bothNames.length === top.length) {
-    return `Shares ${bothNames.join(" and ")} with both ${titleA} and ${titleB}.`;
+    const joined = bothNames.length === 2 ? `${bothNames[0]} ${t.and} ${bothNames[1]}` : bothNames[0];
+    return t.sharesWithBoth(joined, titleA, titleB);
   }
 
   if (bothNames.length > 0) {
     const restIsA = aNames.length > 0;
     const rest = restIsA ? aNames[0] : bNames[0];
     const restTitle = restIsA ? titleA : titleB;
-    return `Shares ${bothNames[0]} with both ${titleA} and ${titleB} — also ${rest} (${restTitle}).`;
+    return t.sharesWithBothAlso(bothNames[0], titleA, titleB, rest, restTitle);
   }
 
   if (aNames.length > 0 && bNames.length > 0) {
-    return `Connects to ${titleA} through ${aNames[0]} and ${titleB} through ${bNames[0]}.`;
+    return t.connectsThrough(titleA, aNames[0], titleB, bNames[0]);
   }
 
   if (aNames.length > 0) {
-    return `Shares ${aNames.join(", ")} with ${titleA}.`;
+    return t.sharesWith(aNames.join(", "), titleA);
   }
 
-  return `Shares ${bNames.join(", ")} with ${titleB}.`;
+  return t.sharesWith(bNames.join(", "), titleB);
 }
 
 // --- Single reference (mood search / one detail-page title) -------------
@@ -160,17 +165,24 @@ function pickBalancedTop(signals: MatchSignal[]): MatchSignal[] {
 
 export function explainSingleRefMatch(
   signals: MatchSignal[],
-  referenceTitle: string
+  referenceTitle: string,
+  locale: Locale = DEFAULT_LOCALE
 ): string | null {
   const top = pickBalancedTop(signals);
   if (top.length === 0) return null;
-  return `Shares ${top.map((s) => s.name).join(", ")} with ${referenceTitle}.`;
+  return getDictionary(locale).matchExplanation.sharesWith(
+    top.map((s) => s.name).join(", "),
+    referenceTitle
+  );
 }
 
-export function explainMoodMatch(signals: MatchSignal[]): string | null {
+export function explainMoodMatch(
+  signals: MatchSignal[],
+  locale: Locale = DEFAULT_LOCALE
+): string | null {
   const top = pickBalancedTop(signals);
   if (top.length === 0) return null;
-  return `Matches ${top.map((s) => s.name).join(", ")}.`;
+  return getDictionary(locale).matchExplanation.matches(top.map((s) => s.name).join(", "));
 }
 
 // --- Shared per-candidate attachment (mood search + single-title recs) --

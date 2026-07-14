@@ -189,9 +189,41 @@ const en = {
     failedToBlendTV: "Failed to blend TV shows",
     unsupportedLanguage: "Query parameter 'language' is not supported",
     moodSearchNotConfigured: "Mood search is not configured",
+    // Thrown from mood-search.ts's interpretMoodQuery/getClient - distinct
+    // from moodSearchNotConfigured above, which is the route's own
+    // up-front isMoodSearchAvailable() check; these are the same-shaped
+    // failures surfacing from inside the Anthropic call itself.
+    moodSearchMisconfigured: "Mood search is not configured correctly",
+    moodSearchRateLimited: "Mood search is temporarily rate-limited - try again shortly",
+    moodSearchUnavailable: "Mood search is temporarily unavailable",
+    moodSearchCouldNotInterpret: "Could not interpret that mood query",
   },
   yearRange: {
     through: (year: number) => `through ${year}`,
+  },
+  // Deterministic "why this match" scaffold text - shared by mood search,
+  // vibe blend, and detail-page recommendations (see match-explanation.ts).
+  // `and` is its own key because it's the one word reused as a runtime
+  // joiner (variable-length name lists) rather than baked into a fixed
+  // template - every other connector word is fixed per-template since its
+  // position never varies.
+  matchExplanation: {
+    and: "and",
+    matches: (names: string) => `Matches ${names}.`,
+    sharesWith: (names: string, title: string) => `Shares ${names} with ${title}.`,
+    sharesWithBoth: (names: string, titleA: string, titleB: string) =>
+      `Shares ${names} with both ${titleA} and ${titleB}.`,
+    sharesWithBothAlso: (
+      name: string,
+      titleA: string,
+      titleB: string,
+      restName: string,
+      restTitle: string
+    ) => `Shares ${name} with both ${titleA} and ${titleB} — also ${restName} (${restTitle}).`,
+    connectsThrough: (titleA: string, nameA: string, titleB: string, nameB: string) =>
+      `Connects to ${titleA} through ${nameA} and ${titleB} through ${nameB}.`,
+    recommendedAlongsideBoth: (titleA: string, titleB: string) =>
+      `Recommended alongside both ${titleA} and ${titleB}.`,
   },
   detail: {
     backToMovies: "← Back to Movies",

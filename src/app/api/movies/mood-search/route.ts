@@ -195,6 +195,7 @@ export async function POST(request: NextRequest) {
       const interpretation = await interpretMoodQuery(query.trim(), {
         genreNames: genres.map((genre) => genre.name),
         sortOptions: MOVIE_SORT_OPTIONS,
+        locale,
       });
       const resolved = await resolveMoodFilters(interpretation, "movie", genres, tmdbLanguage);
       genreIds = resolved.genreIds;
@@ -252,7 +253,8 @@ export async function POST(request: NextRequest) {
       genreNames,
       keywordNames,
       "movie",
-      resultsPage
+      resultsPage,
+      locale
     );
     const enriched = await enrichMoviesWithRatings(ranked);
     const filtered = enriched.filter((movie) => passesRatingFilters(movie.ratings, minImdb, minRt));

@@ -182,9 +182,31 @@ const ptBR: Dictionary = {
     failedToBlendTV: "Falha ao combinar séries",
     unsupportedLanguage: "O parâmetro 'language' não é compatível",
     moodSearchNotConfigured: "A busca por clima não está configurada",
+    moodSearchMisconfigured: "A busca por clima não está configurada corretamente",
+    moodSearchRateLimited: "A busca por clima está temporariamente limitada - tente novamente em instantes",
+    moodSearchUnavailable: "A busca por clima está temporariamente indisponível",
+    moodSearchCouldNotInterpret: "Não foi possível interpretar essa busca por clima",
   },
   yearRange: {
     through: (year: number) => `até ${year}`,
+  },
+  matchExplanation: {
+    and: "e",
+    matches: (names: string) => `Combina com ${names}.`,
+    sharesWith: (names: string, title: string) => `Compartilha ${names} com ${title}.`,
+    sharesWithBoth: (names: string, titleA: string, titleB: string) =>
+      `Compartilha ${names} com ${titleA} e ${titleB}.`,
+    sharesWithBothAlso: (
+      name: string,
+      titleA: string,
+      titleB: string,
+      restName: string,
+      restTitle: string
+    ) => `Compartilha ${name} com ${titleA} e ${titleB} — também ${restName} (${restTitle}).`,
+    connectsThrough: (titleA: string, nameA: string, titleB: string, nameB: string) =>
+      `Conecta-se a ${titleA} por meio de ${nameA} e a ${titleB} por meio de ${nameB}.`,
+    recommendedAlongsideBoth: (titleA: string, titleB: string) =>
+      `Recomendado junto com ${titleA} e ${titleB}.`,
   },
   detail: {
     backToMovies: "← Voltar para Filmes",
