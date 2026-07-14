@@ -3,6 +3,7 @@ import { Bebas_Neue, Geist, Geist_Mono } from "next/font/google";
 import { AppHeader } from "@/components/app-header";
 import { TmdbAttribution } from "@/components/tmdb-attribution";
 import { LanguageProvider } from "@/components/language-provider";
+import { ToastContainer } from "@/components/toast-container";
 import "./globals.css";
 
 // latin-ext added alongside latin - pt-BR text throughout the UI needs
@@ -47,6 +48,7 @@ export default function RootLayout({
           <AppHeader />
           <main className="flex flex-1 flex-col">{children}</main>
           <TmdbAttribution />
+          <ToastContainer />
         </LanguageProvider>
       </body>
     </html>

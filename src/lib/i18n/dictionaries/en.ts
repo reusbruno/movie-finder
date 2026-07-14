@@ -71,6 +71,10 @@ const en = {
     removeTooltip: "Remove from watchlist",
     addTooltip: "Add to watchlist",
     posterAlt: (title: string) => `${title} poster`,
+    addedToast: "Added to your watchlist",
+    removedToast: "Removed from your watchlist",
+    addFailedToast: "Couldn't add to your watchlist",
+    removeFailedToast: "Couldn't remove from your watchlist",
   },
   explain: {
     expanding: "Expanding…",

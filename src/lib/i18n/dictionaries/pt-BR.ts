@@ -70,6 +70,10 @@ const ptBR: Dictionary = {
     removeTooltip: "Remover da lista",
     addTooltip: "Adicionar à lista",
     posterAlt: (title: string) => `Pôster de ${title}`,
+    addedToast: "Adicionado à sua lista",
+    removedToast: "Removido da sua lista",
+    addFailedToast: "Não foi possível adicionar à sua lista",
+    removeFailedToast: "Não foi possível remover da sua lista",
   },
   explain: {
     expanding: "Expandindo…",

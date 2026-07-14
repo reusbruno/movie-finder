@@ -9,8 +9,15 @@ import type { MovieWithMatch } from "@/lib/match-explanation";
 import { useWatchlist } from "@/lib/use-watchlist";
 import { useAuth } from "@/lib/use-auth";
 import type { WatchlistMediaType } from "@/lib/watchlist";
+import { showToast } from "@/lib/toast";
 import { ScoreBadges } from "@/components/score-badges";
 import { useLanguage } from "@/components/language-provider";
+
+// How long the click-pulse holds its scaled-up state before settling back -
+// short enough to read as an instant "click registered" reaction rather
+// than a lingering animation, independent of how long the actual
+// add/remove network call takes.
+const PULSE_MS = 180;
 
 // Exported for reuse on the detail pages' own poster (movies/[id],
 // series/[id]) - the design requires a watchlist button there too, not
@@ -31,28 +38,48 @@ export function WatchlistButton({
   const router = useRouter();
   const pathname = usePathname();
   const saved = has(id, mediaType);
+  const [pulsing, setPulsing] = useState(false);
 
   function handleClick(event: React.MouseEvent) {
     event.preventDefault();
     event.stopPropagation();
     // Prompt sign-in rather than failing silently - matches every other
     // "not signed in" path in this feature (the watchlist page itself
-    // redirects the same way).
+    // redirects the same way). No pulse/toast here - nothing actually
+    // happened to the watchlist yet, just a redirect.
     if (!user) {
       router.push(`/sign-in?next=${encodeURIComponent(pathname)}`);
       return;
     }
+
+    // Fires immediately on click, not after the network call resolves -
+    // the whole point is that the click feels instant regardless of
+    // latency. Same trigger for both add and remove.
+    setPulsing(true);
+    setTimeout(() => setPulsing(false), PULSE_MS);
+
     if (saved) {
       // The /watchlist page itself is server-rendered from the DB at
       // request time - removing an item there needs a refresh so the now-
       // stale server-rendered card/controls actually disappear, not just
       // show an unfilled bookmark. Every other grid is unaffected by a
       // refresh of its own route, so this is scoped to that one page.
-      void remove(id, mediaType).then(() => {
+      void remove(id, mediaType).then((result) => {
         if (pathname === "/watchlist") router.refresh();
+        if (result.error === null) {
+          showToast(t.watchlistButton.removedToast, "success");
+        } else if (result.error === "failed") {
+          showToast(t.watchlistButton.removeFailedToast, "error");
+        }
       });
     } else {
-      void add(id, mediaType);
+      void add(id, mediaType).then((result) => {
+        if (result.error === null) {
+          showToast(t.watchlistButton.addedToast, "success");
+        } else if (result.error === "failed") {
+          showToast(t.watchlistButton.addFailedToast, "error");
+        }
+      });
     }
   }
 
@@ -63,7 +90,9 @@ export function WatchlistButton({
       aria-pressed={saved}
       aria-label={saved ? t.watchlistButton.removeAria(title) : t.watchlistButton.addAria(title)}
       title={saved ? t.watchlistButton.removeTooltip : t.watchlistButton.addTooltip}
-      className="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition-colors hover:bg-black/80"
+      className={`absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition-all duration-150 hover:bg-black/80 ${
+        pulsing ? "scale-125" : "scale-100"
+      }`}
     >
       <Bookmark className="h-3.5 w-3.5" fill={saved ? "currentColor" : "none"} />
     </button>
