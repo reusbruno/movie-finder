@@ -221,6 +221,10 @@ const ptBR: Dictionary = {
     noBiography: "Nenhuma biografia disponível.",
     filmography: "Filmografia",
   },
+  trailer: {
+    playAriaLabel: (title: string) => `Reproduzir trailer de ${title}`,
+    closeAriaLabel: "Fechar trailer",
+  },
 };
 
 export default ptBR;

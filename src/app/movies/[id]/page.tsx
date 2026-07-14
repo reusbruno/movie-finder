@@ -5,17 +5,20 @@ import {
   getMovieCredits,
   getMovieDetails,
   getMovieRecommendations,
+  getMovieVideos,
   TMDBError,
 } from "@/lib/tmdb";
 import { enrichMoviesWithRatings, getMovieRatings } from "@/lib/ratings";
 import { getMovieKeywordList } from "@/lib/keywords";
 import { DEFAULT_WATCH_REGION, getMovieWatchProviders } from "@/lib/watch-providers";
 import { attachMatchExplanations, explainSingleRefMatch } from "@/lib/match-explanation";
+import { selectTrailer } from "@/lib/trailer";
 import { isAnthropicAvailable } from "@/lib/anthropic-client";
 import { MovieGrid } from "@/components/movie-grid";
 import { ScoreBadges } from "@/components/score-badges";
 import { CastList } from "@/components/cast-list";
 import { WatchProviders } from "@/components/watch-providers";
+import { TrailerButton } from "@/components/trailer-button";
 import { isLocale, DEFAULT_LOCALE, TMDB_LANGUAGE } from "@/lib/i18n/locale";
 import { getDictionary } from "@/lib/i18n";
 
@@ -72,6 +75,10 @@ export default async function MovieDetailPage({
   // client-side WatchProviders component notices the mismatch on mount and
   // re-fetches for the real persisted region if it differs.
   const watchProvidersPromise = getMovieWatchProviders(movieId, DEFAULT_WATCH_REGION);
+  // Deliberately not passed `language` - see getMovieVideos in tmdb.ts and
+  // src/lib/trailer.ts: trailer selection is language-independent by
+  // design (original audio, captions are a separate display preference).
+  const videosPromise = getMovieVideos(movieId);
   // A bad id 404s on every endpoint, not just getMovieDetails - if these
   // reject while getMovieDetails is still in flight below, nothing has
   // observed them yet, which Node treats as an unhandled rejection. The
@@ -82,6 +89,7 @@ export default async function MovieDetailPage({
   creditsPromise.catch(() => {});
   ownKeywordsPromise.catch(() => {});
   watchProvidersPromise.catch(() => {});
+  videosPromise.catch(() => {});
 
   let details;
   try {
@@ -93,13 +101,16 @@ export default async function MovieDetailPage({
     throw error;
   }
 
-  const [recommendations, ratings, credits, ownKeywords, watchProviders] = await Promise.all([
-    recommendationsPromise,
-    ratingsPromise,
-    creditsPromise,
-    ownKeywordsPromise,
-    watchProvidersPromise,
-  ]);
+  const [recommendations, ratings, credits, ownKeywords, watchProviders, videos] =
+    await Promise.all([
+      recommendationsPromise,
+      ratingsPromise,
+      creditsPromise,
+      ownKeywordsPromise,
+      watchProvidersPromise,
+      videosPromise,
+    ]);
+  const trailer = selectTrailer(videos.results);
   const genreNames = new Map(details.genres.map((genre) => [genre.id, genre.name]));
   const keywordNames = new Map(ownKeywords.map((keyword) => [keyword.id, keyword.name]));
   const recommendationsWithExplanations = await attachMatchExplanations(
@@ -140,6 +151,9 @@ export default async function MovieDetailPage({
             <div className="flex h-full items-center justify-center p-4 text-center text-sm text-foreground/60">
               {t.common.noPosterAvailable}
             </div>
+          )}
+          {trailer && (
+            <TrailerButton videoKey={trailer.key} title={details.title} locale={locale} />
           )}
         </div>
         <div className="flex flex-col gap-3">

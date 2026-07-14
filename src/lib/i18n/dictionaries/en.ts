@@ -238,6 +238,10 @@ const en = {
     noBiography: "No biography available.",
     filmography: "Filmography",
   },
+  trailer: {
+    playAriaLabel: (title: string) => `Play trailer for ${title}`,
+    closeAriaLabel: "Close trailer",
+  },
 };
 
 export default en;

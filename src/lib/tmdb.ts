@@ -270,6 +270,47 @@ export function getTVKeywords(id: number): Promise<{ id: number; results: TMDBKe
   return tmdbFetch<{ id: number; results: TMDBKeyword[] }>(`/tv/${id}/keywords`);
 }
 
+export interface TMDBVideo {
+  id: string;
+  key: string;
+  name: string;
+  site: string;
+  type: string;
+  official: boolean;
+  published_at: string;
+  iso_639_1: string;
+  iso_3166_1: string;
+}
+
+export interface TMDBVideosResponse {
+  id: number;
+  results: TMDBVideo[];
+}
+
+// Deliberately not threaded with the viewer's UI locale (see
+// src/lib/trailer.ts) - trailer selection is language-independent by
+// design (audio stays original, captions are a separate display
+// preference), so this always requests the broadest set of official-ish
+// videos regardless of the page's own language. TMDB's videos endpoint
+// defaults to filtering by `language`, which would silently drop most
+// trailers - almost every official trailer on TMDB is tagged "en"
+// regardless of the title's own original_language - so `language=en-US`
+// plus `include_video_language=en,null` widens that filter to also include
+// untagged entries instead of narrowing to a locale that may have nothing.
+export function getMovieVideos(id: number): Promise<TMDBVideosResponse> {
+  return tmdbFetch<TMDBVideosResponse>(`/movie/${id}/videos`, {
+    language: "en-US",
+    include_video_language: "en,null",
+  });
+}
+
+export function getTVVideos(id: number): Promise<TMDBVideosResponse> {
+  return tmdbFetch<TMDBVideosResponse>(`/tv/${id}/videos`, {
+    language: "en-US",
+    include_video_language: "en,null",
+  });
+}
+
 export interface TMDBKnownForItem {
   id: number;
   media_type: "movie" | "tv";
